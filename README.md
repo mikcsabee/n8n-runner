@@ -75,11 +75,11 @@ Initializes the runner with a credentials provider. Must be called before execut
 
 - `credentialsProvider` - Object implementing `ICredentialsProvider` interface
 
-**`async execute(workflow: unknown): Promise<ExecutionResult>`**
+**`async execute(workflow: WorkflowParameters): Promise<ExecutionResult>`**
 
 Executes a workflow and returns the result.
 
-- `workflow` - Workflow object with `name` and `nodes` properties
+- `workflow` - Workflow object conforming to the `WorkflowParameters` interface (must include `name`, `nodes`, etc.)
 - Returns `ExecutionResult` with `success`, `data`, and optional `error` fields
 
 ### Interfaces
@@ -187,4 +187,4 @@ Compiles TypeScript to JavaScript in the `dist/` directory.
 
 ## License
 
-ISC
+MIT
