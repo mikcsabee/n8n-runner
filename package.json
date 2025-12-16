@@ -2,6 +2,14 @@
   "name": "n8n-runner",
   "version": "0.0.1",
   "description": "n8n workflow runner library",
+  "author": "Csaba Miklos",
+  "keywords": [
+    "n8n",
+    "workflow",
+    "automation",
+    "runner",
+    "executor"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
