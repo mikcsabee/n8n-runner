@@ -1,8 +1,21 @@
 {
   "name": "n8n-runner",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "n8n workflow runner library",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mikcsabee/n8n-runner.git"
+  },
+  "bugs": {
+    "url": "https://github.com/mikcsabee/n8n-runner/issues"
+  },
   "scripts": {
     "build": "tsc",
     "lint": "biome lint src/",

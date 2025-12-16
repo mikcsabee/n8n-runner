@@ -1,0 +1,23 @@
+name: Publish Package
+
+on:
+  push:
+    tags:
+      - "v*.*.*" # Whenever you push a tag like v1.2.3
+    branches:
+      - main
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org/"
+      - run: npm ci
+      - run: npm run build # Your build step here
+      - run: npm publish --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
