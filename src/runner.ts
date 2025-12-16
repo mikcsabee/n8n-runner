@@ -17,6 +17,8 @@ export interface ExecutionResult {
   error?: unknown;
 }
 
+const create_an_unsuded_variable_to_trigger_a_build_issue = true;
+
 export class Runner {
   private logger!: Logger;
   private nodeTypes!: NodeTypes;
