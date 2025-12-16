@@ -17,8 +17,6 @@ export interface ExecutionResult {
   error?: unknown;
 }
 
-const testVar: any = 22; // To test CI linting
-
 export class Runner {
   private logger!: Logger;
   private nodeTypes!: NodeTypes;
