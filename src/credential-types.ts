@@ -46,14 +46,26 @@ export class CredentialTypes implements ICredentialTypes {
   }
 
   getParentTypes(typeName: string): string[] {
+    return this.getParentTypesRecursive(typeName, new Set<string>());
+  }
+
+  private getParentTypesRecursive(typeName: string, visited: Set<string>): string[] {
+    // Check for circular reference
+    if (visited.has(typeName)) {
+      throw new Error(`Circular reference detected in credential type hierarchy: ${typeName}`);
+    }
+
     const extendsArr = this.knownCredentials[typeName]?.extends ?? [];
 
     if (extendsArr.length === 0) return [];
 
+    // Mark this type as visited
+    visited.add(typeName);
+
     const extendsArrCopy = [...extendsArr];
 
     for (const type of extendsArr) {
-      extendsArrCopy.push(...this.getParentTypes(type));
+      extendsArrCopy.push(...this.getParentTypesRecursive(type, visited));
     }
 
     return extendsArrCopy;

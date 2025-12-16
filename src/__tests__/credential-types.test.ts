@@ -276,11 +276,10 @@ describe('CredentialTypes', () => {
         },
       };
 
-      // This may cause infinite recursion, but we're testing the code path
-      // In practice, this shouldn't happen with valid credential types
+      // Should throw with a clear error message instead of stack overflow
       expect(() => {
         testInstance.getParentTypes('typeA');
-      }).toThrow(); // Will stack overflow, which is expected for circular refs
+      }).toThrow('Circular reference detected in credential type hierarchy: typeA');
     });
 
     it('should copy extends array before iterating (lines 55-56)', () => {
