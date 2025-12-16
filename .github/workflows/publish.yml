@@ -3,19 +3,22 @@ name: Publish Package
 on:
   push:
     tags:
-      - "v*.*.*" # Whenever you push a tag like v1.2.3
+      - "v*.*.*" # Whenever someone pushes a tag like v1.2.3
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 24
           registry-url: "https://registry.npmjs.org/"
+          always-auth: true
       - run: npm ci
       - run: npm run test:coverage
-      - run: npm run build # Build the project
-      - run: npm publish --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+      - run: npm run build
+      - run: npm publish --provenance --access public
