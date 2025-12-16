@@ -14,8 +14,8 @@ jobs:
           node-version: 24
           registry-url: "https://registry.npmjs.org/"
       - run: npm ci
-      - run: npm test
-      - run: npm run build # Your build step here
+      - run: npm run test:coverage
+      - run: npm run build # Build the project
       - run: npm publish --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
