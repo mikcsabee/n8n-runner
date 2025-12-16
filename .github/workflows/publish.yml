@@ -2,8 +2,6 @@ name: Publish Package
 
 on:
   push:
-    branches:
-      - try-to-fix-pipeline # Temporary: trigger on current branch pushes - REMOVE THIS WHEN PR is created!!!
     tags:
       - "v*.*.*" # Whenever someone push a tag like v1.2.3
 
@@ -19,9 +17,8 @@ jobs:
         with:
           node-version: 18
           registry-url: "https://registry.npmjs.org/"
+          always-auth: true
       - run: npm ci
       - run: npm run test:coverage
       - run: npm run build
       - run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.TEMP_TOKEN }}
