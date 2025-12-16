@@ -3,7 +3,7 @@ name: Publish Package
 on:
   push:
     tags:
-      - "v*.*.*" # Whenever someone push a tag like v1.2.3
+      - "v*.*.*" # Whenever someone pushes a tag like v1.2.3
 
 jobs:
   publish:
