@@ -4,9 +4,6 @@ on:
   push:
     tags:
       - "v*.*.*" # Whenever you push a tag like v1.2.3
-    branches:
-      - main
-
 jobs:
   publish:
     runs-on: ubuntu-latest
