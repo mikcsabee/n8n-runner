@@ -17,7 +17,7 @@ export interface ExecutionResult {
   error?: unknown;
 }
 
-const this_wont_compile
+const testVar: any = 22; // To test CI linting
 
 export class Runner {
   private logger!: Logger;
