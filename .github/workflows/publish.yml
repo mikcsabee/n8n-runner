@@ -2,11 +2,17 @@ name: Publish Package
 
 on:
   push:
+    branches:
+      - try-to-fix-pipeline # Temporary: trigger on current branch pushes
     tags:
-      - "v*.*.*" # Whenever you push a tag like v1.2.3
+      - "v*.*.*" # Whenever someone push a tag like v1.2.3
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -18,4 +24,4 @@ jobs:
       - run: npm run build # Build the project
       - run: npm publish --provenance
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPMJS_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.TEMP_TOKEN }}
