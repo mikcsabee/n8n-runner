@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import 'reflect-metadata';
 
 // Mock modules before importing the function
@@ -39,7 +38,7 @@ jest.mock('n8n-core', () => {
   ) {
     capturedConfigs.push(config);
     this.addHandler = jest.fn();
-  // biome-ignore lint/suspicious/noExplicitAny: Mock setup requires any type
+    // biome-ignore lint/suspicious/noExplicitAny: Mock setup requires any type
   }) as any;
   mockHooksClass.getCapturedConfigs = () => capturedConfigs;
   mockHooksClass.clearCapturedConfigs = () => {
@@ -58,13 +57,14 @@ import type { Workflow } from 'n8n-workflow';
 import { createAdditionalData } from '../additional-data';
 
 describe('createAdditionalData', () => {
-  const createMockWorkflow = (overrides?: Record<string, unknown>): Workflow => ({
-    id: 'workflow-1',
-    name: 'Test',
-    nodes: {},
-    connectionsBySourceNode: {},
-    ...overrides,
-  } as unknown as Workflow);
+  const createMockWorkflow = (overrides?: Record<string, unknown>): Workflow =>
+    ({
+      id: 'workflow-1',
+      name: 'Test',
+      nodes: {},
+      connectionsBySourceNode: {},
+      ...overrides,
+    }) as unknown as Workflow;
 
   beforeEach(() => {
     jest.clearAllMocks();
