@@ -15,7 +15,6 @@ export function getPathForClass(classConstructor: Constructor): string | null {
         const exports = moduleObj.exports;
         if (
           exports === classConstructor ||
-          //exports.MDPrompt === classConstructor ||
           Object.values(exports).includes(classConstructor)
         ) {
           // Extract package name from the module path

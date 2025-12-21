@@ -152,11 +152,12 @@ export class NodeTypes implements INodeTypes {
       let NodeClass = (mod[className] || mod.default) as new () => INodeType | IVersionedNodeType;
 
       if (!NodeClass) {
-        Object.keys(mod).forEach((key) => {
+        for (const key of Object.keys(mod)) {
           if (key.toLowerCase() === className.toLowerCase()) {
             NodeClass = mod[key] as new () => INodeType | IVersionedNodeType;
+            break;
           }
-        });
+        }
       }
 
       if (!NodeClass) {
