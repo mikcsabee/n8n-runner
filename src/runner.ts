@@ -4,6 +4,7 @@ import { WorkflowExecute } from 'n8n-core';
 import type { WorkflowParameters } from 'n8n-workflow';
 import { Workflow } from 'n8n-workflow';
 import { createAdditionalData } from './additional-data';
+import type { Constructor } from './class-utils';
 import { CredentialTypes } from './credential-types';
 import { CredentialsHelper } from './credentials-helper';
 import { CredentialsOverwrites } from './credentials-overwrites';
@@ -22,11 +23,14 @@ export class Runner {
   private nodeTypes!: NodeTypes;
   private initialized = false;
 
-  async init(credentialsProvider: ICredentialsProvider): Promise<void> {
+  async init(
+    credentialsProvider: ICredentialsProvider,
+    customNodePackages?: Constructor[],
+  ): Promise<void> {
     if (this.initialized) return;
 
     this.logger = Container.get(Logger);
-    this.nodeTypes = new NodeTypes();
+    this.nodeTypes = new NodeTypes(customNodePackages);
 
     // Register credential services in DI container
     Container.set(CredentialTypes, new CredentialTypes());

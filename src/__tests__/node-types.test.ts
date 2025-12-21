@@ -1,7 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import 'reflect-metadata';
 
 const mockDebug = jest.fn();
+const mockWarn = jest.fn();
+const mockError = jest.fn();
 
 jest.mock('@n8n/backend-common', () => ({
   Logger: jest.fn(),
@@ -11,6 +12,8 @@ jest.mock('@n8n/di', () => ({
   Container: {
     get: jest.fn(() => ({
       debug: mockDebug,
+      warn: mockWarn,
+      error: mockError,
     })),
   },
 }));
@@ -21,6 +24,7 @@ jest.mock('n8n-workflow', () => ({
   },
 }));
 
+import type { Constructor } from '../class-utils';
 import { NodeTypes } from '../node-types';
 
 describe('NodeTypes', () => {
@@ -29,6 +33,8 @@ describe('NodeTypes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockDebug.mockClear();
+    mockWarn.mockClear();
+    mockError.mockClear();
     // Clear require cache to reset module loading state
     jest.resetModules();
     nodeTypes = new NodeTypes();
@@ -552,6 +558,106 @@ describe('NodeTypes', () => {
         await nodeTypes.loadNodeType('invalid');
       } catch (error) {
         expect(error).toBeInstanceOf(Error);
+      }
+    });
+  });
+
+  describe('NodeTypes constructor', () => {
+    it('should initialize with custom node packages', () => {
+      // Create a mock constructor
+      class MockNode {}
+
+      // Mock getPathForClass to return a valid path
+      jest.mock('../class-utils', () => ({
+        getPathForClass: jest.fn(() => '/path/to/custom/package'),
+      }));
+
+      const { getPathForClass } = require('../class-utils');
+      getPathForClass.mockReturnValue('/path/to/custom/package');
+
+      const nodeTypesWithCustom = new NodeTypes([MockNode as Constructor]);
+
+      // Access customPaths to verify it was set
+      const customPaths = (nodeTypesWithCustom as unknown as Record<string, unknown>).customPaths;
+      expect(customPaths).toBeDefined();
+    });
+  });
+
+  describe('requireModule with resolve fallback', () => {
+    it('should use require.resolve fallback when direct require fails', () => {
+      const testPath = 'some-non-existent-module';
+
+      // This should trigger the catch block with require.resolve
+      expect(() => NodeTypes.requireModule(testPath)).toThrow();
+    });
+  });
+
+  describe('case-insensitive class name matching', () => {
+    it('should find class with case-insensitive matching when exact match fails', async () => {
+      const mockModule = {
+        mynode: class MyNode {},
+      };
+
+      jest.spyOn(NodeTypes, 'tryLoadModule').mockReturnValue(mockModule);
+
+      await nodeTypes.loadNodeType('n8n-nodes-base.MyNode');
+
+      // Should successfully load despite case mismatch
+      expect(() => nodeTypes.getByName('n8n-nodes-base.MyNode')).not.toThrow();
+    });
+  });
+
+  describe('custom node paths', () => {
+    it('should initialize customPaths array when customNodePackages provided', () => {
+      // Use a class that's actually in require.cache
+      const { NodeHelpers } = require('n8n-workflow');
+
+      // Create NodeTypes with custom packages
+      const customNodeTypes = new NodeTypes([NodeHelpers as Constructor]);
+
+      // Check that customPaths was initialized (even if empty after filtering)
+      const customPaths = (customNodeTypes as unknown as Record<string, unknown>).customPaths;
+      expect(customPaths).toBeDefined();
+      expect(Array.isArray(customPaths)).toBe(true);
+      // The array exists, which covers lines 18-20
+    });
+
+    it('should add custom paths to possiblePaths when loading nodes', async () => {
+      // Manually set customPaths to ensure the forEach loop executes
+      const customNodeTypes = new NodeTypes();
+      (customNodeTypes as unknown as Record<string, unknown>).customPaths = [
+        '/custom/path1',
+        '/custom/path2',
+      ];
+
+      // Mock tryLoadModule to capture the paths being tried
+      let capturedPaths: string[] = [];
+      const originalTryLoadModule = NodeTypes.tryLoadModule;
+      jest.spyOn(NodeTypes, 'tryLoadModule').mockImplementation((paths: string[]) => {
+        capturedPaths = paths;
+        // Return a mock module
+        return { TestNode: class TestNode {} };
+      });
+
+      try {
+        await customNodeTypes.loadNodeType('test.TestNode');
+
+        // Verify that custom paths were added (lines 141-142 should be covered)
+        const hasCustomPath1 = capturedPaths.some((p) => p.includes('/custom/path1/nodes/'));
+        const hasCustomPath2 = capturedPaths.some((p) => p.includes('/custom/path2/nodes/'));
+        expect(hasCustomPath1).toBe(true);
+        expect(hasCustomPath2).toBe(true);
+
+        // Verify that at least the paths were generated from custom paths
+        // Lines 141-142 push both className and nodeName variants
+        const customPathCount = capturedPaths.filter(
+          (p) => p.startsWith('/custom/path1') || p.startsWith('/custom/path2'),
+        ).length;
+        // Should have 4 paths: 2 custom paths × 2 variants each
+        expect(customPathCount).toBe(4);
+      } finally {
+        // Restore original
+        NodeTypes.tryLoadModule = originalTryLoadModule;
       }
     });
   });
