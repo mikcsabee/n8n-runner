@@ -5,9 +5,14 @@ on:
     tags:
       - "v*.*.*" # Whenever someone pushes a tag like v1.2.3
 
+permissions:
+  id-token: write # REQUIRED for OIDC
+  contents: read
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: prod
     permissions:
       contents: read
       id-token: write
