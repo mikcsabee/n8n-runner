@@ -26,6 +26,7 @@ npm install n8n-runner
 
 ```typescript
 import { Runner } from 'n8n-runner';
+import { MyNode } from './my-node';
 import type { ICredentialsProvider } from 'n8n-runner';
 
 // Define your credentials provider
@@ -41,9 +42,16 @@ const credentialsProvider: ICredentialsProvider = {
   },
 };
 
+// Define custom node classes (optional)
+const customClasses = {
+  'custom-nodes.my-node': MyNode,
+  // The keys in the `customClasses` object should match the node type names used in the workflow JSON
+  // and the values should be the node class constructors.
+};
+
 // Create and initialize runner
 const runner = new Runner();
-await runner.init(credentialsProvider);
+await runner.init(credentialsProvider, customClasses);
 
 // Execute a workflow
 const workflow = {
@@ -69,11 +77,12 @@ The main class for workflow execution.
 
 #### Methods
 
-**`async init(credentialsProvider: ICredentialsProvider): Promise<void>`**
+**`async init(credentialsProvider: ICredentialsProvider, customClasses?: Record<string, NodeConstructor>): Promise<void>`**
 
-Initializes the runner with a credentials provider. Must be called before executing workflows.
+Initializes the runner with a credentials provider and optional custom node classes. Must be called before executing workflows.
 
 - `credentialsProvider` - Object implementing `ICredentialsProvider` interface
+- `customClasses` - (Optional) Object mapping node type names to custom node class constructors
 
 **`async execute(workflow: WorkflowParameters): Promise<ExecutionResult>`**
 
