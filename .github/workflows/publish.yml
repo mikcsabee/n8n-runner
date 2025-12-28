@@ -5,7 +5,7 @@ on:
     tags:
       - "v*.*.*" # Whenever someone pushes a tag like v1.2.3
     branches:
-      - "fix-publich"
+      - "fix-publish"
 
 permissions:
   id-token: write # REQUIRED for OIDC
