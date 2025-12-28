@@ -4,8 +4,6 @@ on:
   push:
     tags:
       - "v*.*.*" # Whenever someone pushes a tag like v1.2.3
-    branches:
-      - "fix-publish"
 
 permissions:
   id-token: write # REQUIRED for OIDC
@@ -14,6 +12,7 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: prod
     permissions:
       contents: read
       id-token: write
