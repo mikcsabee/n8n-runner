@@ -30,8 +30,11 @@
   "scripts": {
     "build": "tsc",
     "lint": "biome lint src/",
-    "format": "biome format src/ --write",
+    "lint:fix": "biome lint src/ --write",
+    "format": "biome format src/",
+    "format:fix": "biome format src/ --write",
     "check": "biome check src/",
+    "check:fix": "biome check src/ --write",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"

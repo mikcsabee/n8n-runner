@@ -8,7 +8,7 @@ import { CredentialTypes } from './credential-types';
 import { CredentialsHelper } from './credentials-helper';
 import { CredentialsOverwrites } from './credentials-overwrites';
 import type { ICredentialsProvider } from './credentials-provider';
-import { NodeTypes } from './node-types';
+import { NodeTypes, type NodeConstructor } from './node-types';
 
 export interface ExecutionResult {
   success: boolean;
@@ -22,11 +22,14 @@ export class Runner {
   private nodeTypes!: NodeTypes;
   private initialized = false;
 
-  async init(credentialsProvider: ICredentialsProvider): Promise<void> {
+  async init(
+    credentialsProvider: ICredentialsProvider,
+    customclasses?: Record<string, NodeConstructor>,
+  ): Promise<void> {
     if (this.initialized) return;
 
     this.logger = Container.get(Logger);
-    this.nodeTypes = new NodeTypes();
+    this.nodeTypes = new NodeTypes(customclasses);
 
     // Register credential services in DI container
     Container.set(CredentialTypes, new CredentialTypes());

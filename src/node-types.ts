@@ -3,6 +3,8 @@ import { Container } from '@n8n/di';
 import type { IDataObject, INodeType, INodeTypes, IVersionedNodeType } from 'n8n-workflow';
 import { NodeHelpers } from 'n8n-workflow';
 
+export type NodeConstructor<T = object> = new (...args: unknown[]) => T;
+
 /**
  * NodeTypes implementation that can dynamically load nodes
  */
@@ -10,7 +12,7 @@ export class NodeTypes implements INodeTypes {
   private loadedNodes: Map<string, INodeType | IVersionedNodeType> = new Map();
   private logger: Logger;
 
-  constructor() {
+  constructor(private customClasses?: Record<string, NodeConstructor>) {
     this.logger = Container.get(Logger);
   }
 
@@ -49,14 +51,12 @@ export class NodeTypes implements INodeTypes {
    */
   public static requireModule(modulePath: string): unknown {
     try {
-      // eslint-disable-next-line global-require, import/no-dynamic-require
       return require(modulePath);
     } catch (_e) {
       // If the module is not found locally, try resolving from the current working directory
       const resolvedPath = require.resolve(modulePath, {
         paths: [process.cwd(), ...(require.resolve.paths(modulePath) || [])],
       });
-      // eslint-disable-next-line global-require, import/no-dynamic-require
       return require(resolvedPath);
     }
   }
@@ -98,6 +98,15 @@ export class NodeTypes implements INodeTypes {
     const className = nodeName.charAt(0).toUpperCase() + nodeName.slice(1);
 
     try {
+      if (this.customClasses) {
+        const NodeClass = this.customClasses[nodeTypeName] as new () => INodeType | IVersionedNodeType;
+        if (NodeClass) {
+          const nodeInstance = new NodeClass();
+          this.loadedNodes.set(nodeTypeName, nodeInstance);
+          return;
+        }
+      }
+
       // Build possible module paths
       const possiblePaths: string[] = [];
 

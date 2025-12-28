@@ -1,7 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import 'reflect-metadata';
 
 const mockDebug = jest.fn();
+const mockWarn = jest.fn();
+const mockError = jest.fn();
 
 jest.mock('@n8n/backend-common', () => ({
   Logger: jest.fn(),
@@ -11,6 +12,8 @@ jest.mock('@n8n/di', () => ({
   Container: {
     get: jest.fn(() => ({
       debug: mockDebug,
+      warn: mockWarn,
+      error: mockError,
     })),
   },
 }));
@@ -21,6 +24,7 @@ jest.mock('n8n-workflow', () => ({
   },
 }));
 
+import type { INodeType } from 'n8n-workflow';
 import { NodeTypes } from '../node-types';
 
 describe('NodeTypes', () => {
@@ -29,6 +33,8 @@ describe('NodeTypes', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockDebug.mockClear();
+    mockWarn.mockClear();
+    mockError.mockClear();
     // Clear require cache to reset module loading state
     jest.resetModules();
     nodeTypes = new NodeTypes();
@@ -118,6 +124,74 @@ describe('NodeTypes', () => {
 
     it('should throw error for invalid node type format', async () => {
       await expect(nodeTypes.loadNodeType('invalidFormat')).rejects.toThrow();
+    });
+
+    it('should load node from custom classes when provided', async () => {
+      // Create a mock custom node class
+      const mockNodeClass = class MockCustomNode {
+        description = {
+          displayName: 'Custom Node',
+          name: 'customNode',
+          group: [],
+          version: 1,
+          description: 'A custom test node',
+          defaults: { name: 'Custom Node' },
+          inputs: [],
+          outputs: [],
+          properties: [],
+        };
+      };
+
+      // Create NodeTypes instance with custom classes
+      const customNodeTypes = new NodeTypes({
+        'n8n-nodes-base.customNode': mockNodeClass as unknown as new () => INodeType,
+      });
+
+      // Load the node type
+      await customNodeTypes.loadNodeType('n8n-nodes-base.customNode');
+
+      // Verify the node was loaded and can be retrieved
+      const loadedNode = customNodeTypes.getByName('n8n-nodes-base.customNode');
+      expect(loadedNode).toBeDefined();
+      expect(loadedNode.description.displayName).toBe('Custom Node');
+      expect(loadedNode.description.name).toBe('customNode');
+    });
+
+    it('should return early when custom class is found and not attempt module loading', async () => {
+      // Create a mock custom node class
+      const mockNodeClass = class MockEarlyReturn {
+        description = {
+          displayName: 'Early Return Node',
+          name: 'earlyReturn',
+          group: [],
+          version: 1,
+          description: 'A test node for early return',
+          defaults: { name: 'Early Return Node' },
+          inputs: [],
+          outputs: [],
+          properties: [],
+        };
+      };
+
+      // Create NodeTypes instance with custom classes
+      const customNodeTypes = new NodeTypes({
+        'n8n-nodes-base.earlyReturn': mockNodeClass as unknown as new () => INodeType,
+      });
+
+      // Mock requireModule to verify it's not called
+      const requireSpy = jest.spyOn(NodeTypes, 'requireModule' as any);
+
+      // Load the node type
+      await customNodeTypes.loadNodeType('n8n-nodes-base.earlyReturn');
+
+      // Verify requireModule was never called (early return happened)
+      expect(requireSpy).not.toHaveBeenCalled();
+
+      // Verify the node was still loaded correctly
+      const loadedNode = customNodeTypes.getByName('n8n-nodes-base.earlyReturn');
+      expect(loadedNode).toBeDefined();
+
+      requireSpy.mockRestore();
     });
 
     it('should log debug info when attempting to load a node', async () => {
@@ -553,6 +627,15 @@ describe('NodeTypes', () => {
       } catch (error) {
         expect(error).toBeInstanceOf(Error);
       }
+    });
+  });
+
+  describe('requireModule with resolve fallback', () => {
+    it('should use require.resolve fallback when direct require fails', () => {
+      const testPath = 'some-non-existent-module';
+
+      // This should trigger the catch block with require.resolve
+      expect(() => NodeTypes.requireModule(testPath)).toThrow();
     });
   });
 });
