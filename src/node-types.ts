@@ -5,7 +5,6 @@ import { NodeHelpers } from 'n8n-workflow';
 
 export type NodeConstructor<T = object> = new (...args: unknown[]) => T;
 
-
 /**
  * NodeTypes implementation that can dynamically load nodes
  */
@@ -13,7 +12,7 @@ export class NodeTypes implements INodeTypes {
   private loadedNodes: Map<string, INodeType | IVersionedNodeType> = new Map();
   private logger: Logger;
 
-  constructor(private customclasses?: Record<string, NodeConstructor>) {
+  constructor(private customClasses?: Record<string, NodeConstructor>) {
     this.logger = Container.get(Logger);
   }
 
@@ -99,9 +98,8 @@ export class NodeTypes implements INodeTypes {
     const className = nodeName.charAt(0).toUpperCase() + nodeName.slice(1);
 
     try {
-      if (this.customclasses) {
-        this.customclasses[nodeTypeName];
-        const NodeClass = this.customclasses[nodeTypeName] as new () => INodeType | IVersionedNodeType;
+      if (this.customClasses) {
+        const NodeClass = this.customClasses[nodeTypeName] as new () => INodeType | IVersionedNodeType;
         if (NodeClass) {
           const nodeInstance = new NodeClass();
           this.loadedNodes.set(nodeTypeName, nodeInstance);
