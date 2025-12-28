@@ -2,7 +2,9 @@ import { Logger } from '@n8n/backend-common';
 import { Container } from '@n8n/di';
 import type { IDataObject, INodeType, INodeTypes, IVersionedNodeType } from 'n8n-workflow';
 import { NodeHelpers } from 'n8n-workflow';
-import { type Constructor, getPathForClass } from './class-utils';
+
+export type NodeConstructor<T = object> = new (...args: unknown[]) => T;
+
 
 /**
  * NodeTypes implementation that can dynamically load nodes
@@ -10,15 +12,9 @@ import { type Constructor, getPathForClass } from './class-utils';
 export class NodeTypes implements INodeTypes {
   private loadedNodes: Map<string, INodeType | IVersionedNodeType> = new Map();
   private logger: Logger;
-  private customPaths: string[] = [];
 
-  constructor(customNodePackages?: Constructor[]) {
+  constructor(private customclasses?: Record<string, NodeConstructor>) {
     this.logger = Container.get(Logger);
-    if (customNodePackages) {
-      this.customPaths = customNodePackages
-        .map(getPathForClass)
-        .filter((p): p is string => p !== null);
-    }
   }
 
   getByName(nodeType: string): INodeType | IVersionedNodeType {
@@ -103,6 +99,16 @@ export class NodeTypes implements INodeTypes {
     const className = nodeName.charAt(0).toUpperCase() + nodeName.slice(1);
 
     try {
+      if (this.customclasses) {
+        this.customclasses[nodeTypeName];
+        const NodeClass = this.customclasses[nodeTypeName] as new () => INodeType | IVersionedNodeType;
+        if (NodeClass) {
+          const nodeInstance = new NodeClass();
+          this.loadedNodes.set(nodeTypeName, nodeInstance);
+          return;
+        }
+      }
+
       // Build possible module paths
       const possiblePaths: string[] = [];
 
@@ -135,11 +141,6 @@ export class NodeTypes implements INodeTypes {
         possiblePaths.push(`@n8n/n8n-nodes-langchain/dist/nodes/${className}/${className}.node.js`);
       }
 
-      this.customPaths.forEach((customPath) => {
-        possiblePaths.push(`${customPath}/nodes/${className}/${className}.node.js`);
-        possiblePaths.push(`${customPath}/nodes/${nodeName}/${className}.node.js`);
-      });
-
       this.logger.debug(
         `[NodeTypes] Trying to load ${nodeTypeName}, className: ${className}, packageName: ${packageName}`,
       );
@@ -149,16 +150,7 @@ export class NodeTypes implements INodeTypes {
 
       // The node class is usually the default export or named export matching the class name
       const mod = nodeModule as Record<string, unknown>;
-      let NodeClass = (mod[className] || mod.default) as new () => INodeType | IVersionedNodeType;
-
-      if (!NodeClass) {
-        for (const key of Object.keys(mod)) {
-          if (key.toLowerCase() === className.toLowerCase()) {
-            NodeClass = mod[key] as new () => INodeType | IVersionedNodeType;
-            break;
-          }
-        }
-      }
+      const NodeClass = (mod[className] || mod.default) as new () => INodeType | IVersionedNodeType;
 
       if (!NodeClass) {
         throw new Error(`Could not find class ${className} in module`);
