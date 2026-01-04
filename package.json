@@ -35,7 +35,7 @@
     "format:fix": "biome format src/ --write",
     "check": "biome check src/",
     "check:fix": "biome check src/ --write",
-    "test": "jest --forceExit",
+    "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
   },

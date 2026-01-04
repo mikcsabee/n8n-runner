@@ -1,3 +1,5 @@
+import 'reflect-metadata';
+
 import {
   type IExecuteFunctions,
   type INodeExecutionData,
@@ -149,5 +151,7 @@ describe('Integration', () => {
       status: 'success',
       stoppedAt: expect.any(Date),
     });
+
+    await runner.shutdown();
   });
 });
