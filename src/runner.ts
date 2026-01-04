@@ -103,6 +103,10 @@ export class Runner {
   }
 
   async shutdown(): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Runner not initialized. Call init() first.');
+    }
+
     this.logger.debug('Shutting down runner...');
 
     // Cleanup SSHClientsManager
@@ -116,5 +120,7 @@ export class Runner {
       // SSHClientsManager might not be initialized
       this.logger.debug('SSHClientsManager cleanup skipped');
     }
+
+    Container.reset();
   }
 }

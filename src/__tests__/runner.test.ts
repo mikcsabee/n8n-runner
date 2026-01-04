@@ -13,6 +13,7 @@ jest.mock('@n8n/di', () => {
     Container: {
       get: jest.fn(() => mockLogger),
       set: jest.fn(),
+      reset: jest.fn(),
     },
     Service: () => (target: unknown) => target,
   };
@@ -186,6 +187,12 @@ describe('Runner', () => {
   });
 
   describe('shutdown', () => {
+    it('should throw error if not initialized', async () => {
+      const uninitializedRunner = new Runner();
+
+      await expect(uninitializedRunner.shutdown()).rejects.toThrow('Runner not initialized');
+    });
+
     beforeEach(async () => {
       const mockProvider: ICredentialsProvider = { getCredentialData: jest.fn() };
       await runner.init(mockProvider);
