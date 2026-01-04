@@ -13,6 +13,7 @@ jest.mock('@n8n/di', () => {
     Container: {
       get: jest.fn(() => mockLogger),
       set: jest.fn(),
+      reset: jest.fn(),
     },
     Service: () => (target: unknown) => target,
   };
@@ -182,6 +183,57 @@ describe('Runner', () => {
       expect(result.error).toBeDefined();
       expect(result.error).toBeInstanceOf(Error);
       expect((result.error as Error).message).toBe(stringError);
+    });
+  });
+
+  describe('shutdown', () => {
+    it('should throw error if not initialized', async () => {
+      const uninitializedRunner = new Runner();
+
+      await expect(uninitializedRunner.shutdown()).rejects.toThrow('Runner not initialized');
+    });
+
+    beforeEach(async () => {
+      const mockProvider: ICredentialsProvider = { getCredentialData: jest.fn() };
+      await runner.init(mockProvider);
+    });
+
+    it('should successfully cleanup SSHClientsManager when it exists', async () => {
+      const mockSSHManager = {
+        onShutdown: jest.fn(),
+      };
+      (Container.get as jest.Mock).mockImplementation((type) => {
+        if (type.name === 'SSHClientsManager') {
+          return mockSSHManager;
+        }
+        return { debug: jest.fn(), error: jest.fn() };
+      });
+
+      await runner.shutdown();
+
+      expect(mockSSHManager.onShutdown).toHaveBeenCalled();
+    });
+
+    it('should handle SSHClientsManager not being initialized', async () => {
+      (Container.get as jest.Mock).mockImplementation((type) => {
+        if (type.name === 'SSHClientsManager') {
+          throw new Error('Not initialized');
+        }
+        return { debug: jest.fn(), error: jest.fn() };
+      });
+
+      await expect(runner.shutdown()).resolves.not.toThrow();
+    });
+
+    it('should handle SSHClientsManager returning null', async () => {
+      (Container.get as jest.Mock).mockImplementation((type) => {
+        if (type.name === 'SSHClientsManager') {
+          return null;
+        }
+        return { debug: jest.fn(), error: jest.fn() };
+      });
+
+      await expect(runner.shutdown()).resolves.not.toThrow();
     });
   });
 });

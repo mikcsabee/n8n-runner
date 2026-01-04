@@ -99,7 +99,9 @@ export class NodeTypes implements INodeTypes {
 
     try {
       if (this.customClasses) {
-        const NodeClass = this.customClasses[nodeTypeName] as new () => INodeType | IVersionedNodeType;
+        const NodeClass = this.customClasses[nodeTypeName] as new () =>
+          | INodeType
+          | IVersionedNodeType;
         if (NodeClass) {
           const nodeInstance = new NodeClass();
           this.loadedNodes.set(nodeTypeName, nodeInstance);

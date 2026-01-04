@@ -1,6 +1,7 @@
 import { Logger } from '@n8n/backend-common';
 import { Container } from '@n8n/di';
 import { WorkflowExecute } from 'n8n-core';
+import { SSHClientsManager } from 'n8n-core/dist/execution-engine/ssh-clients-manager.js';
 import type { WorkflowParameters } from 'n8n-workflow';
 import { Workflow } from 'n8n-workflow';
 import { createAdditionalData } from './additional-data';
@@ -8,7 +9,7 @@ import { CredentialTypes } from './credential-types';
 import { CredentialsHelper } from './credentials-helper';
 import { CredentialsOverwrites } from './credentials-overwrites';
 import type { ICredentialsProvider } from './credentials-provider';
-import { NodeTypes, type NodeConstructor } from './node-types';
+import { type NodeConstructor, NodeTypes } from './node-types';
 
 export interface ExecutionResult {
   success: boolean;
@@ -29,6 +30,7 @@ export class Runner {
     if (this.initialized) return;
 
     this.logger = Container.get(Logger);
+
     this.nodeTypes = new NodeTypes(customclasses);
 
     // Register credential services in DI container
@@ -98,5 +100,27 @@ export class Runner {
         error: error instanceof Error ? error : new Error(String(error)),
       };
     }
+  }
+
+  async shutdown(): Promise<void> {
+    if (!this.initialized) {
+      throw new Error('Runner not initialized. Call init() first.');
+    }
+
+    this.logger.debug('Shutting down runner...');
+
+    // Cleanup SSHClientsManager
+    try {
+      const sshManager = Container.get(SSHClientsManager);
+      if (sshManager) {
+        sshManager.onShutdown();
+        this.logger.debug('SSHClientsManager cleaned up');
+      }
+    } catch {
+      // SSHClientsManager might not be initialized
+      this.logger.debug('SSHClientsManager cleanup skipped');
+    }
+
+    Container.reset();
   }
 }
