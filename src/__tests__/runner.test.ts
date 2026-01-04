@@ -184,4 +184,49 @@ describe('Runner', () => {
       expect((result.error as Error).message).toBe(stringError);
     });
   });
+
+  describe('shutdown', () => {
+    beforeEach(async () => {
+      const mockProvider: ICredentialsProvider = { getCredentialData: jest.fn() };
+      await runner.init(mockProvider);
+    });
+
+    it('should successfully cleanup SSHClientsManager when it exists', async () => {
+      const mockSSHManager = {
+        onShutdown: jest.fn(),
+      };
+      (Container.get as jest.Mock).mockImplementation((type) => {
+        if (type.name === 'SSHClientsManager') {
+          return mockSSHManager;
+        }
+        return { debug: jest.fn(), error: jest.fn() };
+      });
+
+      await runner.shutdown();
+
+      expect(mockSSHManager.onShutdown).toHaveBeenCalled();
+    });
+
+    it('should handle SSHClientsManager not being initialized', async () => {
+      (Container.get as jest.Mock).mockImplementation((type) => {
+        if (type.name === 'SSHClientsManager') {
+          throw new Error('Not initialized');
+        }
+        return { debug: jest.fn(), error: jest.fn() };
+      });
+
+      await expect(runner.shutdown()).resolves.not.toThrow();
+    });
+
+    it('should handle SSHClientsManager returning null', async () => {
+      (Container.get as jest.Mock).mockImplementation((type) => {
+        if (type.name === 'SSHClientsManager') {
+          return null;
+        }
+        return { debug: jest.fn(), error: jest.fn() };
+      });
+
+      await expect(runner.shutdown()).resolves.not.toThrow();
+    });
+  });
 });
