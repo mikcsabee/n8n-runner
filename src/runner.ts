@@ -8,7 +8,7 @@ import { CredentialTypes } from './credential-types';
 import { CredentialsHelper } from './credentials-helper';
 import { CredentialsOverwrites } from './credentials-overwrites';
 import type { ICredentialsProvider } from './credentials-provider';
-import { NodeTypes, type NodeConstructor } from './node-types';
+import { type NodeConstructor, NodeTypes } from './node-types';
 
 export interface ExecutionResult {
   success: boolean;

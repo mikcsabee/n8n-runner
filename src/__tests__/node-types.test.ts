@@ -179,6 +179,7 @@ describe('NodeTypes', () => {
       });
 
       // Mock requireModule to verify it's not called
+      // biome-ignore lint/suspicious/noExplicitAny: jest.spyOn requires any type to access private method
       const requireSpy = jest.spyOn(NodeTypes, 'requireModule' as any);
 
       // Load the node type

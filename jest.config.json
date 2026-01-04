@@ -21,6 +21,18 @@
           "module": "commonjs"
         }
       }
+    ],
+    "^.+\\.js$": [
+      "ts-jest",
+      {
+        "tsconfig": {
+          "module": "commonjs",
+          "allowJs": true
+        }
+      }
     ]
-  }
+  },
+  "transformIgnorePatterns": [
+    "node_modules/(?!(p-retry|is-network-error|retry|@langchain)/)"
+  ]
 }
