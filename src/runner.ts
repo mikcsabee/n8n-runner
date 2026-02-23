@@ -83,7 +83,7 @@ export class Runner {
     const workflowExecute = new WorkflowExecute(additionalData, 'internal');
 
     try {
-      const data = await workflowExecute.run(workflowInstance);
+      const data = await workflowExecute.run({workflow: workflowInstance});
 
       this.logger.debug(`Workflow execution completed with status: ${data.status}`);
 
