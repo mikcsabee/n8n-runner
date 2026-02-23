@@ -51,6 +51,7 @@ jest.mock('../node-types', () => ({
 }));
 
 import { Container } from '@n8n/di';
+import type { WorkflowParameters } from 'n8n-workflow';
 import type { ICredentialsProvider } from '../credentials-provider';
 import type { NodeTypes } from '../node-types';
 import { Runner } from '../runner';
@@ -198,42 +199,28 @@ describe('Runner', () => {
       await runner.init(mockProvider);
     });
 
-    it('should successfully cleanup SSHClientsManager when it exists', async () => {
-      const mockSSHManager = {
-        onShutdown: jest.fn(),
-      };
-      (Container.get as jest.Mock).mockImplementation((type) => {
-        if (type.name === 'SSHClientsManager') {
-          return mockSSHManager;
-        }
-        return { debug: jest.fn(), error: jest.fn() };
-      });
+    it('should successfully shutdown and reset container', async () => {
+      const resetSpy = jest.spyOn(Container, 'reset');
 
       await runner.shutdown();
 
-      expect(mockSSHManager.onShutdown).toHaveBeenCalled();
+      expect(resetSpy).toHaveBeenCalled();
     });
 
-    it('should handle SSHClientsManager not being initialized', async () => {
-      (Container.get as jest.Mock).mockImplementation((type) => {
-        if (type.name === 'SSHClientsManager') {
-          throw new Error('Not initialized');
-        }
-        return { debug: jest.fn(), error: jest.fn() };
-      });
+    it('should prevent operations after shutdown', async () => {
+      await runner.shutdown();
 
-      await expect(runner.shutdown()).resolves.not.toThrow();
-    });
+      const mockWorkflow: WorkflowParameters = {
+        id: 'test-workflow',
+        name: 'Test Workflow',
+        nodes: [],
+        connections: {},
+        active: false,
+        nodeTypes: {} as NodeTypes,
+      };
 
-    it('should handle SSHClientsManager returning null', async () => {
-      (Container.get as jest.Mock).mockImplementation((type) => {
-        if (type.name === 'SSHClientsManager') {
-          return null;
-        }
-        return { debug: jest.fn(), error: jest.fn() };
-      });
-
-      await expect(runner.shutdown()).resolves.not.toThrow();
+      // After shutdown, runner should not be initialized
+      await expect(runner.execute(mockWorkflow)).rejects.toThrow('Runner not initialized');
     });
   });
 });
