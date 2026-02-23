@@ -1,7 +1,6 @@
 import { Logger } from '@n8n/backend-common';
 import { Container } from '@n8n/di';
 import { WorkflowExecute } from 'n8n-core';
-import { SSHClientsManager } from 'n8n-core/dist/execution-engine/ssh-clients-manager.js';
 import type { WorkflowParameters } from 'n8n-workflow';
 import { Workflow } from 'n8n-workflow';
 import { createAdditionalData } from './additional-data';
@@ -109,18 +108,10 @@ export class Runner {
 
     this.logger.debug('Shutting down runner...');
 
-    // Cleanup SSHClientsManager
-    try {
-      const sshManager = Container.get(SSHClientsManager);
-      if (sshManager) {
-        sshManager.onShutdown();
-        this.logger.debug('SSHClientsManager cleaned up');
-      }
-    } catch {
-      // SSHClientsManager might not be initialized
-      this.logger.debug('SSHClientsManager cleanup skipped');
-    }
-
+    // Reset the DI container
     Container.reset();
+    
+    this.initialized = false;
+    this.logger.debug('Runner shutdown complete');
   }
 }
