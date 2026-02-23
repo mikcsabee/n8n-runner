@@ -41,7 +41,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@n8n/backend-common": "1.0.1",
+    "@n8n/backend-common": "1.10.0",
     "@n8n/di": "0.10.0",
     "n8n-core": "2.6.0",
     "n8n-workflow": "2.6.0"
