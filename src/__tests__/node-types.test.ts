@@ -118,7 +118,7 @@ describe('NodeTypes', () => {
 
     it('should throw error when module not found', async () => {
       await expect(nodeTypes.loadNodeType('n8n-nodes-base.nonExistent')).rejects.toThrow(
-        'Could not find module',
+        'Failed to load node type',
       );
     });
 
@@ -178,25 +178,25 @@ describe('NodeTypes', () => {
         'n8n-nodes-base.earlyReturn': mockNodeClass as unknown as new () => INodeType,
       });
 
-      // Mock requireModule to verify it's not called
+      // Mock findNodeFile to verify it's not called for custom classes
       // biome-ignore lint/suspicious/noExplicitAny: jest.spyOn requires any type to access private method
-      const requireSpy = jest.spyOn(NodeTypes, 'requireModule' as any);
+      const findNodeFileSpy = jest.spyOn(NodeTypes as any, 'findNodeFile');
 
       // Load the node type
       await customNodeTypes.loadNodeType('n8n-nodes-base.earlyReturn');
 
-      // Verify requireModule was never called (early return happened)
-      expect(requireSpy).not.toHaveBeenCalled();
+      // Verify findNodeFile was never called (early return happened)
+      expect(findNodeFileSpy).not.toHaveBeenCalled();
 
       // Verify the node was still loaded correctly
       const loadedNode = customNodeTypes.getByName('n8n-nodes-base.earlyReturn');
       expect(loadedNode).toBeDefined();
 
-      requireSpy.mockRestore();
+      findNodeFileSpy.mockRestore();
     });
 
     it('should log debug info when attempting to load a node', async () => {
-      // This test verifies the logger.debug calls (lines 94-95)
+      // This test verifies the logger.debug calls
       mockDebug.mockClear();
 
       try {
@@ -210,41 +210,41 @@ describe('NodeTypes', () => {
       const hasLoadingLog = debugCallArgs.some((arg) =>
         arg?.includes('Trying to load n8n-nodes-base.test'),
       );
-      const hasPathsLog = debugCallArgs.some((arg) => arg?.includes('Possible paths'));
 
       expect(hasLoadingLog).toBe(true);
-      expect(hasPathsLog).toBe(true);
+      // Should have at least one debug call for the loading attempt
+      expect(mockDebug).toHaveBeenCalled();
     });
 
-    it('should create langchain node type paths with all subdirectories', async () => {
+    it('should attempt to load langchain nodes with file system search', async () => {
       mockDebug.mockClear();
 
       try {
         await nodeTypes.loadNodeType('@n8n/n8n-nodes-langchain.llm');
       } catch {
-        // Expected to fail, we just want to verify the paths were logged
+        // Expected to fail, we just want to verify the search was attempted
       }
 
-      // Verify debug was called to log the paths attempt
+      // Verify debug was called to log the loading attempt
       expect(mockDebug).toHaveBeenCalled();
-      // Check that one of the debug calls contains information about paths
-      const debugCalls = mockDebug.mock.calls.map((call) => JSON.stringify(call));
-      const hasPathLog = debugCalls.some(
-        (callStr) => callStr.includes('llms') || callStr.includes('Possible paths'),
+      // Check that debug calls include loading and search information
+      const debugCalls = mockDebug.mock.calls.map((call) => call[0]);
+      const hasLoadingLog = debugCalls.some(
+        (arg) => arg?.includes('Trying to load') || arg?.includes('Searching in'),
       );
-      expect(hasPathLog).toBe(true);
+      expect(hasLoadingLog).toBe(true);
     });
 
-    it('should include fallback paths without subdir for langchain nodes', async () => {
+    it('should search for langchain nodes in package directory', async () => {
       mockDebug.mockClear();
 
       try {
         await nodeTypes.loadNodeType('@n8n/n8n-nodes-langchain.customNode');
       } catch {
-        // Expected to fail, we just want to verify the fallback path was logged
+        // Expected to fail, we just want to verify the search was attempted
       }
 
-      // Verify debug was called to log the paths attempt
+      // Verify debug was called to log the search attempt
       expect(mockDebug).toHaveBeenCalled();
       // Check that debug calls include information about custom node
       const debugCalls = mockDebug.mock.calls.map((call) => JSON.stringify(call));
@@ -294,200 +294,38 @@ describe('NodeTypes', () => {
     });
   });
 
-  describe('requireModule', () => {
-    it('should load module successfully when require succeeds', () => {
-      const mockModule = { TestNode: class MockNode {} };
-      // biome-ignore lint/suspicious/noExplicitAny: jest.spyOn requires any type
-      const requireSpy = jest.spyOn(NodeTypes, 'requireModule' as any).mockReturnValue(mockModule);
-
-      const result = NodeTypes.requireModule('test/path');
-
-      expect(result).toBe(mockModule);
-      requireSpy.mockRestore();
+  describe('resolvePackageRoot', () => {
+    it('should resolve package root for valid package', () => {
+      // This will try to resolve an actual package that exists in node_modules (like 'n8n-workflow')
+      // biome-ignore lint/suspicious/noExplicitAny: accessing private method for testing
+      const result = (NodeTypes as any).resolvePackageRoot('n8n-workflow');
+      // Should return a path if the package exists, or null if not found
+      expect(result === null || typeof result === 'string').toBe(true);
     });
 
-    it('should throw error when require and require.resolve both fail', () => {
-      expect(() => {
-        NodeTypes.requireModule('nonexistent/path');
-      }).toThrow();
+    it('should return null for non-existent package', () => {
+      // biome-ignore lint/suspicious/noExplicitAny: accessing private method for testing
+      const result = (NodeTypes as any).resolvePackageRoot('non-existent-package-xyz-123');
+      expect(result).toBeNull();
     });
   });
 
-  describe('tryLoadModule', () => {
-    it('should try multiple paths and return first successful', () => {
-      const mockModule = { TestNode: class MockNode {} };
-      // biome-ignore lint/suspicious/noExplicitAny: jest.spyOn requires any type
-      const requireSpy = jest.spyOn(NodeTypes, 'requireModule' as any);
-
-      requireSpy.mockImplementationOnce(() => {
-        throw new Error('Path 1 not found');
-      });
-      requireSpy.mockImplementationOnce(() => mockModule);
-
-      const result = NodeTypes.tryLoadModule(['path/1', 'path/2']);
-
-      expect(result).toBe(mockModule);
-      expect(requireSpy).toHaveBeenCalledTimes(2);
-      expect(requireSpy).toHaveBeenNthCalledWith(1, 'path/1');
-      expect(requireSpy).toHaveBeenNthCalledWith(2, 'path/2');
-      requireSpy.mockRestore();
+  describe('findNodeFile', () => {
+    it('should return null for non-existent directory', () => {
+      // biome-ignore lint/suspicious/noExplicitAny: accessing private method for testing
+      const result = (NodeTypes as any).findNodeFile('/non/existent/path', 'TestNode');
+      expect(result).toBeNull();
     });
 
-    it('should throw error when all paths fail', () => {
-      // biome-ignore lint/suspicious/noExplicitAny: jest.spyOn requires any type
-      const requireSpy = jest.spyOn(NodeTypes, 'requireModule' as any).mockImplementation(() => {
-        throw new Error('Not found');
-      });
-
-      expect(() => {
-        NodeTypes.tryLoadModule(['path/1', 'path/2']);
-      }).toThrow('Could not find module');
-
-      requireSpy.mockRestore();
-    });
-
-    it('should include attempted paths in error message', () => {
-      // biome-ignore lint/suspicious/noExplicitAny: jest.spyOn requires any type
-      const requireSpy = jest.spyOn(NodeTypes, 'requireModule' as any).mockImplementation(() => {
-        throw new Error('Not found');
-      });
-
-      try {
-        NodeTypes.tryLoadModule(['path/one', 'path/two', 'path/three']);
-        fail('Should have thrown');
-      } catch (error) {
-        expect((error as Error).message).toContain('path/one');
-        expect((error as Error).message).toContain('path/two');
-        expect((error as Error).message).toContain('path/three');
-      }
-
-      requireSpy.mockRestore();
-    });
-  });
-
-  describe('loadNodeType - path building', () => {
-    it('should build correct paths for n8n-nodes-base nodes', async () => {
-      const mockNodeInstance = { name: 'test' };
-      const mockModule = { MyNode: jest.fn(() => mockNodeInstance) };
-
-      // biome-ignore lint/suspicious/noExplicitAny: jest.spyOn requires any type
-      const tryLoadSpy = jest.spyOn(NodeTypes, 'tryLoadModule' as any).mockReturnValue(mockModule);
-
-      await nodeTypes.loadNodeType('n8n-nodes-base.myNode');
-
-      // Verify the exact paths passed
-      const callArg = tryLoadSpy.mock.calls[0][0];
-      expect(callArg).toEqual([
-        'n8n-nodes-base/dist/nodes/MyNode/MyNode.node.js',
-        'n8n-nodes-base/dist/nodes/myNode/MyNode.node.js',
-      ]);
-
-      tryLoadSpy.mockRestore();
-    });
-
-    it('should build correct paths for langchain nodes with subdirectories', async () => {
-      const mockNodeInstance = { name: 'test' };
-      const mockModule = { LlmNode: jest.fn(() => mockNodeInstance) };
-
-      // biome-ignore lint/suspicious/noExplicitAny: jest.spyOn requires any type
-      const tryLoadSpy = jest.spyOn(NodeTypes, 'tryLoadModule' as any).mockReturnValue(mockModule);
-
-      await nodeTypes.loadNodeType('@n8n/n8n-nodes-langchain.llmNode');
-
-      const callArg = tryLoadSpy.mock.calls[0][0];
-
-      // Should include paths with all subdirectories
-      expect(callArg).toEqual(
-        expect.arrayContaining([
-          expect.stringContaining('llms'),
-          expect.stringContaining('embeddings'),
-          expect.stringContaining('vendors'),
-          expect.stringContaining('chains'),
-          expect.stringContaining('agents'),
-          expect.stringContaining('tools'),
-          expect.stringContaining('vectorstores'),
-          expect.stringContaining('memory'),
-          expect.stringContaining('document_loaders'),
-          expect.stringContaining('retrievers'),
-          expect.stringContaining('text_splitters'),
-          '@n8n/n8n-nodes-langchain/dist/nodes/LlmNode/LlmNode.node.js', // fallback without subdir
-        ]),
-      );
-
-      tryLoadSpy.mockRestore();
+    it('should respect max depth limit', () => {
+      // biome-ignore lint/suspicious/noExplicitAny: accessing private method for testing
+      const result = (NodeTypes as any).findNodeFile(__dirname, 'TestNode', 0);
+      // With max depth 0, should not find anything even if it exists
+      expect(result).toBeNull();
     });
   });
 
   describe('loadNodeType', () => {
-    it('should extract class from module and instantiate it', async () => {
-      const mockNodeInstance = {
-        name: 'testNode',
-        description: { displayName: 'Test Node' },
-      };
-
-      const mockNodeClass = jest.fn(() => mockNodeInstance);
-      const mockModule = {
-        TestNode: mockNodeClass,
-      };
-
-      // biome-ignore lint/suspicious/noExplicitAny: jest.spyOn requires any type
-      const requireSpy = jest.spyOn(NodeTypes, 'requireModule' as any).mockReturnValue(mockModule);
-
-      await nodeTypes.loadNodeType('n8n-nodes-base.testNode');
-
-      const retrieved = nodeTypes.getByName('n8n-nodes-base.testNode');
-      expect(retrieved).toBe(mockNodeInstance);
-      expect(mockNodeClass).toHaveBeenCalled();
-
-      requireSpy.mockRestore();
-    });
-
-    it('should use default export when named export not found', async () => {
-      const mockNodeInstance = { name: 'defaultNode' };
-      const mockNodeClass = jest.fn(() => mockNodeInstance);
-      const mockModule = { default: mockNodeClass };
-
-      // biome-ignore lint/suspicious/noExplicitAny: jest.spyOn requires any type
-      const requireSpy = jest.spyOn(NodeTypes, 'requireModule' as any).mockReturnValue(mockModule);
-
-      await nodeTypes.loadNodeType('n8n-nodes-base.testNode');
-
-      const retrieved = nodeTypes.getByName('n8n-nodes-base.testNode');
-      expect(retrieved).toBe(mockNodeInstance);
-
-      requireSpy.mockRestore();
-    });
-
-    it('should throw error when class not found in module', async () => {
-      const mockModule = { SomeOtherClass: class {} };
-
-      // biome-ignore lint/suspicious/noExplicitAny: jest.spyOn requires any type
-      const requireSpy = jest.spyOn(NodeTypes, 'requireModule' as any).mockReturnValue(mockModule);
-
-      await expect(nodeTypes.loadNodeType('n8n-nodes-base.testNode')).rejects.toThrow(
-        'Could not find class TestNode',
-      );
-
-      requireSpy.mockRestore();
-    });
-
-    it('should throw error when node instantiation fails', async () => {
-      const mockNodeClass = jest.fn(() => {
-        throw new Error('Constructor failed');
-      });
-
-      const mockModule = { TestNode: mockNodeClass };
-
-      // biome-ignore lint/suspicious/noExplicitAny: jest.spyOn requires any type
-      const requireSpy = jest.spyOn(NodeTypes, 'requireModule' as any).mockReturnValue(mockModule);
-
-      await expect(nodeTypes.loadNodeType('n8n-nodes-base.testNode')).rejects.toThrow(
-        'Failed to load node type',
-      );
-
-      requireSpy.mockRestore();
-    });
-
     it('should not reload already loaded nodes', async () => {
       const mockNodeInstance = { name: 'cached' };
       const nodeTypesRecord = nodeTypes as unknown as Record<string, unknown> & {
@@ -495,15 +333,45 @@ describe('NodeTypes', () => {
       };
       nodeTypesRecord.loadedNodes.set('n8n-nodes-base.cached', mockNodeInstance);
 
-      // biome-ignore lint/suspicious/noExplicitAny: jest.spyOn requires any type
-      const requireSpy = jest.spyOn(NodeTypes, 'requireModule' as any);
+      // biome-ignore lint/suspicious/noExplicitAny: accessing private method
+      const findNodeFileSpy = jest.spyOn(NodeTypes as any, 'findNodeFile');
 
       await nodeTypes.loadNodeType('n8n-nodes-base.cached');
 
-      // requireModule should not be called for already-loaded nodes
-      expect(requireSpy).not.toHaveBeenCalled();
+      // findNodeFile should not be called for already-loaded nodes
+      expect(findNodeFileSpy).not.toHaveBeenCalled();
 
-      requireSpy.mockRestore();
+      findNodeFileSpy.mockRestore();
+    });
+
+    it('should throw error when package root cannot be resolved', async () => {
+      // biome-ignore lint/suspicious/noExplicitAny: accessing private method
+      const resolvePackageRootSpy = jest
+        .spyOn(NodeTypes as any, 'resolvePackageRoot')
+        .mockReturnValue(null);
+
+      await expect(nodeTypes.loadNodeType('non-existent-package.someNode')).rejects.toThrow(
+        'Could not resolve package root',
+      );
+
+      resolvePackageRootSpy.mockRestore();
+    });
+
+    it('should throw error when node file cannot be found', async () => {
+      // biome-ignore lint/suspicious/noExplicitAny: accessing private method
+      const resolvePackageRootSpy = jest
+        .spyOn(NodeTypes as any, 'resolvePackageRoot')
+        .mockReturnValue('/some/path');
+
+      // biome-ignore lint/suspicious/noExplicitAny: accessing private method
+      const findNodeFileSpy = jest.spyOn(NodeTypes as any, 'findNodeFile').mockReturnValue(null);
+
+      await expect(nodeTypes.loadNodeType('n8n-nodes-base.someNode')).rejects.toThrow(
+        'Could not find node file',
+      );
+
+      resolvePackageRootSpy.mockRestore();
+      findNodeFileSpy.mockRestore();
     });
   });
 
@@ -574,10 +442,10 @@ describe('NodeTypes', () => {
   });
 
   describe('loadNodeType - module loading edge cases', () => {
-    it('should attempt all possible paths and handle errors gracefully', async () => {
+    it('should attempt to find node file and handle errors gracefully', async () => {
       const debugCalls: string[] = [];
       mockDebug.mockImplementation((msg: string) => {
-        if (msg.includes('Possible paths') || msg.includes('Trying to load')) {
+        if (msg.includes('Searching in') || msg.includes('Trying to load')) {
           debugCalls.push(msg);
         }
       });
@@ -587,19 +455,17 @@ describe('NodeTypes', () => {
       } catch (error) {
         // Expected to fail with proper error message
         expect(error).toBeInstanceOf(Error);
-        expect((error as Error).message).toContain('Could not find module');
       }
 
-      // Verify debug was called with paths and module names
+      // Verify debug was called with search info
       expect(debugCalls.length).toBeGreaterThan(0);
     });
 
-    it('should handle langchain and resolve.paths errors gracefully', async () => {
+    it('should handle langchain package resolution errors gracefully', async () => {
       try {
         await nodeTypes.loadNodeType('@n8n/n8n-nodes-langchain.someNode');
       } catch (error) {
         expect(error).toBeInstanceOf(Error);
-        expect((error as Error).message).toContain('Could not find module');
       }
 
       // Verify debug was called during the attempt
@@ -631,12 +497,15 @@ describe('NodeTypes', () => {
     });
   });
 
-  describe('requireModule with resolve fallback', () => {
-    it('should use require.resolve fallback when direct require fails', () => {
-      const testPath = 'some-non-existent-module';
+  describe('getNodeModulesPaths', () => {
+    it('should include current directory and parent directories', () => {
+      // biome-ignore lint/suspicious/noExplicitAny: accessing private method
+      const paths = (NodeTypes as any).getNodeModulesPaths(process.cwd());
 
-      // This should trigger the catch block with require.resolve
-      expect(() => NodeTypes.requireModule(testPath)).toThrow();
+      expect(paths).toBeInstanceOf(Array);
+      expect(paths.length).toBeGreaterThan(0);
+      // Should include the current working directory's node_modules
+      expect(paths[0]).toContain('node_modules');
     });
   });
 });

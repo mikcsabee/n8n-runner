@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { Logger } from '@n8n/backend-common';
 import { Container } from '@n8n/di';
 import type { IDataObject, INodeType, INodeTypes, IVersionedNodeType } from 'n8n-workflow';
@@ -72,7 +74,6 @@ export class NodeTypes implements INodeTypes {
    */
   private static getNodeModulesPaths(startPath: string): string[] {
     const paths: string[] = [];
-    const path = require('path');
     let currentPath = startPath;
 
     // Walk up the directory tree
@@ -92,23 +93,71 @@ export class NodeTypes implements INodeTypes {
   }
 
   /**
-   * Attempts to load a module from a list of possible paths
-   * Uses requireModule to load each path
+   * Recursively search for a node file in a directory
    */
-  public static tryLoadModule(possiblePaths: string[]): unknown {
-    let lastError: Error | null = null;
-
-    for (const modulePath of possiblePaths) {
-      try {
-        return NodeTypes.requireModule(modulePath);
-      } catch (e) {
-        lastError = e instanceof Error ? e : new Error(String(e));
-      }
+  private static findNodeFile(
+    baseDir: string,
+    className: string,
+    maxDepth: number = 5,
+    currentDepth: number = 0,
+  ): string | null {
+    if (currentDepth > maxDepth) {
+      return null;
     }
 
-    throw new Error(
-      `Could not find module. Tried paths: ${possiblePaths.join(', ')}. Last error: ${lastError?.message}`,
-    );
+    try {
+      if (!fs.existsSync(baseDir)) {
+        return null;
+      }
+
+      const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+
+      // First, check if the target file exists in current directory
+      const targetFileName = `${className}.node.js`;
+      for (const entry of entries) {
+        if (entry.isFile() && entry.name === targetFileName) {
+          return path.join(baseDir, entry.name);
+        }
+      }
+
+      // Then, recursively search subdirectories
+      for (const entry of entries) {
+        if (entry.isDirectory() && !entry.name.startsWith('.')) {
+          const found = NodeTypes.findNodeFile(
+            path.join(baseDir, entry.name),
+            className,
+            maxDepth,
+            currentDepth + 1,
+          );
+          if (found) {
+            return found;
+          }
+        }
+      }
+    } catch (e) {
+      // Ignore permission errors and continue
+      return null;
+    }
+
+    return null;
+  }
+
+  /**
+   * Resolve the root directory of a package
+   */
+  private static resolvePackageRoot(packageName: string): string | null {
+    try {
+      const packageJsonPath = require.resolve(`${packageName}/package.json`, {
+        paths: [
+          process.cwd(),
+          ...NodeTypes.getNodeModulesPaths(process.cwd()),
+          ...(require.resolve.paths(packageName) || []),
+        ],
+      });
+      return path.dirname(packageJsonPath);
+    } catch (e) {
+      return null;
+    }
   }
 
   /**
@@ -139,61 +188,35 @@ export class NodeTypes implements INodeTypes {
         }
       }
 
-      // Build possible module paths
-      const possiblePaths: string[] = [];
-
-      if (packageName === 'n8n-nodes-base') {
-        // Try direct paths first
-        possiblePaths.push(
-          `n8n-nodes-base/dist/nodes/${className}/${className}.node.js`,
-          `n8n-nodes-base/dist/nodes/${nodeName}/${className}.node.js`,
-        );
-        
-        // Try common subdirectories for n8n-nodes-base
-        const subdirs = [
-          'Transform',
-          'Files',
-          'Code',
-          'Data',
-          'Helpers',
-          'Flow',
-          'DateTime',
-        ];
-        for (const subdir of subdirs) {
-          possiblePaths.push(
-            `n8n-nodes-base/dist/nodes/${subdir}/${className}/${className}.node.js`,
-          );
-        }
-      } else if (packageName === '@n8n/n8n-nodes-langchain') {
-        // Langchain nodes can be in different subdirectories
-        const subdirs = [
-          'llms',
-          'embeddings',
-          'vendors',
-          'chains',
-          'agents',
-          'tools',
-          'vectorstores',
-          'memory',
-          'document_loaders',
-          'retrievers',
-          'text_splitters',
-        ];
-        for (const subdir of subdirs) {
-          possiblePaths.push(
-            `@n8n/n8n-nodes-langchain/dist/nodes/${subdir}/${className}/${className}.node.js`,
-          );
-        }
-        // Also try without subdir
-        possiblePaths.push(`@n8n/n8n-nodes-langchain/dist/nodes/${className}/${className}.node.js`);
-      }
-
       this.logger.debug(
         `[NodeTypes] Trying to load ${nodeTypeName}, className: ${className}, packageName: ${packageName}`,
       );
-      this.logger.debug(`[NodeTypes] Possible paths: ${JSON.stringify(possiblePaths)}`);
 
-      const nodeModule = NodeTypes.tryLoadModule(possiblePaths);
+      // Resolve the package root directory
+      const packageRoot = NodeTypes.resolvePackageRoot(packageName);
+      if (!packageRoot) {
+        throw new Error(`Could not resolve package root for ${packageName}`);
+      }
+
+      this.logger.debug(`[NodeTypes] Package root: ${packageRoot}`);
+
+      // Search for the node file in the package directory
+      const searchDir = path.join(packageRoot, 'dist', 'nodes');
+      
+      this.logger.debug(`[NodeTypes] Searching in: ${searchDir}`);
+
+      const nodeFilePath = NodeTypes.findNodeFile(searchDir, className);
+
+      if (!nodeFilePath) {
+        throw new Error(
+          `Could not find node file for ${className} in ${searchDir}`,
+        );
+      }
+
+      this.logger.debug(`[NodeTypes] Found node file: ${nodeFilePath}`);
+
+      // Load the module
+      const nodeModule = require(nodeFilePath);
 
       // The node class is usually the default export or named export matching the class name
       const mod = nodeModule as Record<string, unknown>;
