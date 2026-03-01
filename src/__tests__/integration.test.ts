@@ -150,6 +150,7 @@ describe('Integration', () => {
       startedAt: expect.any(Date),
       status: 'success',
       stoppedAt: expect.any(Date),
+      storedAt: "db"
     });
 
     await runner.shutdown();
