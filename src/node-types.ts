@@ -1,5 +1,5 @@
-import * as fs from 'fs';
-import * as path from 'path';
+import { promises as fsPromises } from 'node:fs';
+import * as path from 'node:path';
 import { Logger } from '@n8n/backend-common';
 import { Container } from '@n8n/di';
 import type { IDataObject, INodeType, INodeTypes, IVersionedNodeType } from 'n8n-workflow';
@@ -13,6 +13,7 @@ export type NodeConstructor<T = object> = new (...args: unknown[]) => T;
 export class NodeTypes implements INodeTypes {
   private loadedNodes: Map<string, INodeType | IVersionedNodeType> = new Map();
   private logger: Logger;
+  private static packageNodeIndexCache: Map<string, Map<string, string>> = new Map();
 
   constructor(private customClasses?: Record<string, NodeConstructor>) {
     this.logger = Container.get(Logger);
@@ -93,53 +94,73 @@ export class NodeTypes implements INodeTypes {
   }
 
   /**
-   * Recursively search for a node file in a directory
+   * Build an index of all node files in a package directory
+   * This scans the directory tree once and caches the results
    */
-  private static findNodeFile(
+  private static async buildPackageIndex(
     baseDir: string,
-    className: string,
     maxDepth: number = 5,
-    currentDepth: number = 0,
-  ): string | null {
-    if (currentDepth > maxDepth) {
-      return null;
-    }
+  ): Promise<Map<string, string>> {
+    const index = new Map<string, string>();
 
-    try {
-      if (!fs.existsSync(baseDir)) {
-        return null;
+    const scanDirectory = async (dir: string, currentDepth: number = 0): Promise<void> => {
+      if (currentDepth > maxDepth) {
+        return;
       }
 
-      const entries = fs.readdirSync(baseDir, { withFileTypes: true });
-
-      // First, check if the target file exists in current directory
-      const targetFileName = `${className}.node.js`;
-      for (const entry of entries) {
-        if (entry.isFile() && entry.name === targetFileName) {
-          return path.join(baseDir, entry.name);
+      try {
+        const exists = await fsPromises
+          .access(dir)
+          .then(() => true)
+          .catch(() => false);
+        if (!exists) {
+          return;
         }
-      }
 
-      // Then, recursively search subdirectories
-      for (const entry of entries) {
-        if (entry.isDirectory() && !entry.name.startsWith('.')) {
-          const found = NodeTypes.findNodeFile(
-            path.join(baseDir, entry.name),
-            className,
-            maxDepth,
-            currentDepth + 1,
-          );
-          if (found) {
-            return found;
+        const entries = await fsPromises.readdir(dir, { withFileTypes: true });
+
+        // Collect all subdirectories to scan in parallel
+        const subdirs: string[] = [];
+
+        for (const entry of entries) {
+          if (entry.isFile() && entry.name.endsWith('.node.js')) {
+            // Extract class name from filename (e.g., "MyNode.node.js" -> "MyNode")
+            const className = entry.name.replace('.node.js', '');
+            const filePath = path.join(dir, entry.name);
+            index.set(className, filePath);
+          } else if (entry.isDirectory() && !entry.name.startsWith('.')) {
+            subdirs.push(path.join(dir, entry.name));
           }
         }
+
+        // Scan subdirectories in parallel
+        await Promise.all(subdirs.map((subdir) => scanDirectory(subdir, currentDepth + 1)));
+      } catch (_e) {
+        // Ignore permission errors and continue
       }
-    } catch (e) {
-      // Ignore permission errors and continue
-      return null;
+    };
+
+    await scanDirectory(baseDir);
+    return index;
+  }
+
+  /**
+   * Get the node file path from cache or build the index
+   */
+  private static async getNodeFilePath(
+    packageRoot: string,
+    className: string,
+  ): Promise<string | null> {
+    const searchDir = path.join(packageRoot, 'dist', 'nodes');
+
+    // Check if we have a cached index for this package
+    if (!NodeTypes.packageNodeIndexCache.has(packageRoot)) {
+      const index = await NodeTypes.buildPackageIndex(searchDir);
+      NodeTypes.packageNodeIndexCache.set(packageRoot, index);
     }
 
-    return null;
+    const packageIndex = NodeTypes.packageNodeIndexCache.get(packageRoot);
+    return packageIndex?.get(className) || null;
   }
 
   /**
@@ -155,7 +176,7 @@ export class NodeTypes implements INodeTypes {
         ],
       });
       return path.dirname(packageJsonPath);
-    } catch (e) {
+    } catch (_e) {
       return null;
     }
   }
@@ -200,16 +221,12 @@ export class NodeTypes implements INodeTypes {
 
       this.logger.debug(`[NodeTypes] Package root: ${packageRoot}`);
 
-      // Search for the node file in the package directory
-      const searchDir = path.join(packageRoot, 'dist', 'nodes');
-      
-      this.logger.debug(`[NodeTypes] Searching in: ${searchDir}`);
-
-      const nodeFilePath = NodeTypes.findNodeFile(searchDir, className);
+      // Get the node file path using the cache
+      const nodeFilePath = await NodeTypes.getNodeFilePath(packageRoot, className);
 
       if (!nodeFilePath) {
         throw new Error(
-          `Could not find node file for ${className} in ${searchDir}`,
+          `Could not find node file for ${className} in ${path.join(packageRoot, 'dist', 'nodes')}`,
         );
       }
 
@@ -231,9 +248,9 @@ export class NodeTypes implements INodeTypes {
 
       // Register the node
       this.loadedNodes.set(nodeTypeName, nodeInstance);
-    } catch (error) {
+    } catch (_e) {
       throw new Error(
-        `Failed to load node type "${nodeTypeName}": ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to load node type "${nodeTypeName}": ${_e instanceof Error ? _e.message : String(_e)}`,
       );
     }
   }
@@ -244,8 +261,7 @@ export class NodeTypes implements INodeTypes {
   async loadNodesFromWorkflow(nodes: Array<{ type: string }>): Promise<void> {
     const uniqueTypes = new Set(nodes.map((n) => n.type));
 
-    for (const nodeType of uniqueTypes) {
-      await this.loadNodeType(nodeType);
-    }
+    // Load all nodes in parallel
+    await Promise.all(Array.from(uniqueTypes).map((nodeType) => this.loadNodeType(nodeType)));
   }
 }
