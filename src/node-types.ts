@@ -1,3 +1,5 @@
+import { promises as fsPromises } from 'node:fs';
+import * as path from 'node:path';
 import { Logger } from '@n8n/backend-common';
 import { Container } from '@n8n/di';
 import type { IDataObject, INodeType, INodeTypes, IVersionedNodeType } from 'n8n-workflow';
@@ -11,6 +13,7 @@ export type NodeConstructor<T = object> = new (...args: unknown[]) => T;
 export class NodeTypes implements INodeTypes {
   private loadedNodes: Map<string, INodeType | IVersionedNodeType> = new Map();
   private logger: Logger;
+  private static packageNodeIndexCache: Map<string, Map<string, string>> = new Map();
 
   constructor(private customClasses?: Record<string, NodeConstructor>) {
     this.logger = Container.get(Logger);
@@ -53,32 +56,129 @@ export class NodeTypes implements INodeTypes {
     try {
       return require(modulePath);
     } catch (_e) {
-      // If the module is not found locally, try resolving from the current working directory
+      // If the module is not found locally, try resolving from multiple locations
+      const searchPaths: string[] = [
+        process.cwd(), // Current working directory
+        ...NodeTypes.getNodeModulesPaths(process.cwd()), // All parent node_modules
+        ...(require.resolve.paths(modulePath) || []),
+      ];
+
       const resolvedPath = require.resolve(modulePath, {
-        paths: [process.cwd(), ...(require.resolve.paths(modulePath) || [])],
+        paths: searchPaths,
       });
       return require(resolvedPath);
     }
   }
 
   /**
-   * Attempts to load a module from a list of possible paths
-   * Uses requireModule to load each path
+   * Get all possible node_modules paths by walking up the directory tree
    */
-  public static tryLoadModule(possiblePaths: string[]): unknown {
-    let lastError: Error | null = null;
+  private static getNodeModulesPaths(startPath: string): string[] {
+    const paths: string[] = [];
+    let currentPath = startPath;
 
-    for (const modulePath of possiblePaths) {
-      try {
-        return NodeTypes.requireModule(modulePath);
-      } catch (e) {
-        lastError = e instanceof Error ? e : new Error(String(e));
+    // Walk up the directory tree
+    while (true) {
+      const nodeModulesPath = path.join(currentPath, 'node_modules');
+      paths.push(nodeModulesPath);
+
+      const parentPath = path.dirname(currentPath);
+      // Stop when we reach the root
+      if (parentPath === currentPath) {
+        break;
       }
+      currentPath = parentPath;
     }
 
-    throw new Error(
-      `Could not find module. Tried paths: ${possiblePaths.join(', ')}. Last error: ${lastError?.message}`,
-    );
+    return paths;
+  }
+
+  /**
+   * Build an index of all node files in a package directory
+   * This scans the directory tree once and caches the results
+   */
+  private static async buildPackageIndex(
+    baseDir: string,
+    maxDepth: number = 5,
+  ): Promise<Map<string, string>> {
+    const index = new Map<string, string>();
+
+    const scanDirectory = async (dir: string, currentDepth: number = 0): Promise<void> => {
+      if (currentDepth > maxDepth) {
+        return;
+      }
+
+      try {
+        const exists = await fsPromises
+          .access(dir)
+          .then(() => true)
+          .catch(() => false);
+        if (!exists) {
+          return;
+        }
+
+        const entries = await fsPromises.readdir(dir, { withFileTypes: true });
+
+        // Collect all subdirectories to scan in parallel
+        const subdirs: string[] = [];
+
+        for (const entry of entries) {
+          if (entry.isFile() && entry.name.endsWith('.node.js')) {
+            // Extract class name from filename (e.g., "MyNode.node.js" -> "MyNode")
+            const className = entry.name.replace('.node.js', '');
+            const filePath = path.join(dir, entry.name);
+            index.set(className, filePath);
+          } else if (entry.isDirectory() && !entry.name.startsWith('.')) {
+            subdirs.push(path.join(dir, entry.name));
+          }
+        }
+
+        // Scan subdirectories in parallel
+        await Promise.all(subdirs.map((subdir) => scanDirectory(subdir, currentDepth + 1)));
+      } catch (_e) {
+        // Ignore permission errors and continue
+      }
+    };
+
+    await scanDirectory(baseDir);
+    return index;
+  }
+
+  /**
+   * Get the node file path from cache or build the index
+   */
+  private static async getNodeFilePath(
+    packageRoot: string,
+    className: string,
+  ): Promise<string | null> {
+    const searchDir = path.join(packageRoot, 'dist', 'nodes');
+
+    // Check if we have a cached index for this package
+    if (!NodeTypes.packageNodeIndexCache.has(packageRoot)) {
+      const index = await NodeTypes.buildPackageIndex(searchDir);
+      NodeTypes.packageNodeIndexCache.set(packageRoot, index);
+    }
+
+    const packageIndex = NodeTypes.packageNodeIndexCache.get(packageRoot);
+    return packageIndex?.get(className) || null;
+  }
+
+  /**
+   * Resolve the root directory of a package
+   */
+  private static resolvePackageRoot(packageName: string): string | null {
+    try {
+      const packageJsonPath = require.resolve(`${packageName}/package.json`, {
+        paths: [
+          process.cwd(),
+          ...NodeTypes.getNodeModulesPaths(process.cwd()),
+          ...(require.resolve.paths(packageName) || []),
+        ],
+      });
+      return path.dirname(packageJsonPath);
+    } catch (_e) {
+      return null;
+    }
   }
 
   /**
@@ -94,6 +194,14 @@ export class NodeTypes implements INodeTypes {
     const lastDotIndex = nodeTypeName.lastIndexOf('.');
     const packageName = nodeTypeName.substring(0, lastDotIndex);
     const nodeName = nodeTypeName.substring(lastDotIndex + 1);
+    
+    // Validate node type name format
+    if (lastDotIndex === -1 || !packageName || !nodeName) {
+      throw new Error(
+        `Invalid node type name format: "${nodeTypeName}". Expected format: <package>.<nodeName> (e.g., "n8n-nodes-base.httpRequest")`,
+      );
+    }
+    
     // Convert camelCase to PascalCase for the class name
     const className = nodeName.charAt(0).toUpperCase() + nodeName.slice(1);
 
@@ -109,44 +217,31 @@ export class NodeTypes implements INodeTypes {
         }
       }
 
-      // Build possible module paths
-      const possiblePaths: string[] = [];
-
-      if (packageName === 'n8n-nodes-base') {
-        possiblePaths.push(
-          `n8n-nodes-base/dist/nodes/${className}/${className}.node.js`,
-          `n8n-nodes-base/dist/nodes/${nodeName}/${className}.node.js`,
-        );
-      } else if (packageName === '@n8n/n8n-nodes-langchain') {
-        // Langchain nodes can be in different subdirectories
-        const subdirs = [
-          'llms',
-          'embeddings',
-          'vendors',
-          'chains',
-          'agents',
-          'tools',
-          'vectorstores',
-          'memory',
-          'document_loaders',
-          'retrievers',
-          'text_splitters',
-        ];
-        for (const subdir of subdirs) {
-          possiblePaths.push(
-            `@n8n/n8n-nodes-langchain/dist/nodes/${subdir}/${className}/${className}.node.js`,
-          );
-        }
-        // Also try without subdir
-        possiblePaths.push(`@n8n/n8n-nodes-langchain/dist/nodes/${className}/${className}.node.js`);
-      }
-
       this.logger.debug(
         `[NodeTypes] Trying to load ${nodeTypeName}, className: ${className}, packageName: ${packageName}`,
       );
-      this.logger.debug(`[NodeTypes] Possible paths: ${JSON.stringify(possiblePaths)}`);
 
-      const nodeModule = NodeTypes.tryLoadModule(possiblePaths);
+      // Resolve the package root directory
+      const packageRoot = NodeTypes.resolvePackageRoot(packageName);
+      if (!packageRoot) {
+        throw new Error(`Could not resolve package root for ${packageName}`);
+      }
+
+      this.logger.debug(`[NodeTypes] Package root: ${packageRoot}`);
+
+      // Get the node file path using the cache
+      const nodeFilePath = await NodeTypes.getNodeFilePath(packageRoot, className);
+
+      if (!nodeFilePath) {
+        throw new Error(
+          `Could not find node file for ${className} in ${path.join(packageRoot, 'dist', 'nodes')}`,
+        );
+      }
+
+      this.logger.debug(`[NodeTypes] Found node file: ${nodeFilePath}`);
+
+      // Load the module
+      const nodeModule = require(nodeFilePath);
 
       // The node class is usually the default export or named export matching the class name
       const mod = nodeModule as Record<string, unknown>;
@@ -161,9 +256,9 @@ export class NodeTypes implements INodeTypes {
 
       // Register the node
       this.loadedNodes.set(nodeTypeName, nodeInstance);
-    } catch (error) {
+    } catch (_e) {
       throw new Error(
-        `Failed to load node type "${nodeTypeName}": ${error instanceof Error ? error.message : String(error)}`,
+        `Failed to load node type "${nodeTypeName}": ${_e instanceof Error ? _e.message : String(_e)}`,
       );
     }
   }
@@ -174,8 +269,7 @@ export class NodeTypes implements INodeTypes {
   async loadNodesFromWorkflow(nodes: Array<{ type: string }>): Promise<void> {
     const uniqueTypes = new Set(nodes.map((n) => n.type));
 
-    for (const nodeType of uniqueTypes) {
-      await this.loadNodeType(nodeType);
-    }
+    // Load all nodes in parallel
+    await Promise.all(Array.from(uniqueTypes).map((nodeType) => this.loadNodeType(nodeType)));
   }
 }
