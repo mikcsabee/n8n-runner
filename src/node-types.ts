@@ -53,12 +53,42 @@ export class NodeTypes implements INodeTypes {
     try {
       return require(modulePath);
     } catch (_e) {
-      // If the module is not found locally, try resolving from the current working directory
+      // If the module is not found locally, try resolving from multiple locations
+      const searchPaths: string[] = [
+        process.cwd(), // Current working directory
+        ...NodeTypes.getNodeModulesPaths(process.cwd()), // All parent node_modules
+        ...(require.resolve.paths(modulePath) || []),
+      ];
+
       const resolvedPath = require.resolve(modulePath, {
-        paths: [process.cwd(), ...(require.resolve.paths(modulePath) || [])],
+        paths: searchPaths,
       });
       return require(resolvedPath);
     }
+  }
+
+  /**
+   * Get all possible node_modules paths by walking up the directory tree
+   */
+  private static getNodeModulesPaths(startPath: string): string[] {
+    const paths: string[] = [];
+    const path = require('path');
+    let currentPath = startPath;
+
+    // Walk up the directory tree
+    while (true) {
+      const nodeModulesPath = path.join(currentPath, 'node_modules');
+      paths.push(nodeModulesPath);
+
+      const parentPath = path.dirname(currentPath);
+      // Stop when we reach the root
+      if (parentPath === currentPath) {
+        break;
+      }
+      currentPath = parentPath;
+    }
+
+    return paths;
   }
 
   /**
@@ -113,10 +143,27 @@ export class NodeTypes implements INodeTypes {
       const possiblePaths: string[] = [];
 
       if (packageName === 'n8n-nodes-base') {
+        // Try direct paths first
         possiblePaths.push(
           `n8n-nodes-base/dist/nodes/${className}/${className}.node.js`,
           `n8n-nodes-base/dist/nodes/${nodeName}/${className}.node.js`,
         );
+        
+        // Try common subdirectories for n8n-nodes-base
+        const subdirs = [
+          'Transform',
+          'Files',
+          'Code',
+          'Data',
+          'Helpers',
+          'Flow',
+          'DateTime',
+        ];
+        for (const subdir of subdirs) {
+          possiblePaths.push(
+            `n8n-nodes-base/dist/nodes/${subdir}/${className}/${className}.node.js`,
+          );
+        }
       } else if (packageName === '@n8n/n8n-nodes-langchain') {
         // Langchain nodes can be in different subdirectories
         const subdirs = [

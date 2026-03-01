@@ -1,3 +1,4 @@
+export type { WorkflowParameters } from 'n8n-workflow';
 export { createAdditionalData } from './additional-data';
 export type { ICredentialsProvider } from './credentials-provider';
 export type { ExecutionResult } from './runner';
