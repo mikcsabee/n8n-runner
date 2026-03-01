@@ -194,6 +194,14 @@ export class NodeTypes implements INodeTypes {
     const lastDotIndex = nodeTypeName.lastIndexOf('.');
     const packageName = nodeTypeName.substring(0, lastDotIndex);
     const nodeName = nodeTypeName.substring(lastDotIndex + 1);
+    
+    // Validate node type name format
+    if (lastDotIndex === -1 || !packageName || !nodeName) {
+      throw new Error(
+        `Invalid node type name format: "${nodeTypeName}". Expected format: <package>.<nodeName> (e.g., "n8n-nodes-base.httpRequest")`,
+      );
+    }
+    
     // Convert camelCase to PascalCase for the class name
     const className = nodeName.charAt(0).toUpperCase() + nodeName.slice(1);
 

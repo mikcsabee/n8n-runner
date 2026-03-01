@@ -429,6 +429,11 @@ describe('NodeTypes', () => {
       const realPath = jest.requireActual('node:path') as typeof import('node:path');
       const realOs = jest.requireActual('node:os') as typeof import('node:os');
 
+      // Mock path module to use actual implementations for this test
+      const mockPath = jest.mocked(path);
+      mockPath.join.mockImplementation((...args) => realPath.join(...args));
+      mockPath.dirname.mockImplementation((p) => realPath.dirname(p));
+
       const previousCwd = process.cwd();
       const tmpDir = realFs.mkdtempSync(realPath.join(realOs.tmpdir(), 'node-types-'));
       const moduleDir = realPath.join(tmpDir, 'node_modules', 'fallback-only-pkg');
