@@ -25,13 +25,13 @@ jest.mock('n8n-workflow', () => ({
 }));
 
 import * as fs from 'fs';
-import * as path from 'path';
 import type { INodeType } from 'n8n-workflow';
+import * as path from 'path';
 import { NodeTypes } from '../node-types';
 
 // Mock fs module
 jest.mock('fs');
-// Mock path module  
+// Mock path module
 jest.mock('path');
 
 describe('NodeTypes', () => {
@@ -105,7 +105,7 @@ describe('NodeTypes', () => {
     it('should walk up directory tree', () => {
       const mockPath = jest.mocked(path);
       mockPath.join.mockImplementation((...args) => args.join('/'));
-      
+
       let callCount = 0;
       mockPath.dirname.mockImplementation((p) => {
         callCount++;
@@ -135,7 +135,7 @@ describe('NodeTypes', () => {
 
     it('should find node file in current directory', () => {
       const mockFs = jest.mocked(fs);
-      
+
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readdirSync.mockReturnValue([
         { name: 'Set.node.js', isFile: () => true, isDirectory: () => false },
@@ -151,20 +151,16 @@ describe('NodeTypes', () => {
     it('should search subdirectories recursively', () => {
       const mockFs = jest.mocked(fs);
       const mockPath = jest.mocked(path);
-      
+
       mockFs.existsSync.mockReturnValue(true);
-      
-      let callCount = 0;
+
+      const callCount = 0;
       mockFs.readdirSync.mockImplementation((dirPath: any) => {
         if (dirPath === '/test') {
-          return [
-            { name: 'subdir', isFile: () => false, isDirectory: () => true },
-          ] as any;
+          return [{ name: 'subdir', isFile: () => false, isDirectory: () => true }] as any;
         }
         if (dirPath === '/test/subdir') {
-          return [
-            { name: 'Code.node.js', isFile: () => true, isDirectory: () => false },
-          ] as any;
+          return [{ name: 'Code.node.js', isFile: () => true, isDirectory: () => false }] as any;
         }
         return [] as any;
       });
@@ -177,7 +173,7 @@ describe('NodeTypes', () => {
 
     it('should skip hidden directories', () => {
       const mockFs = jest.mocked(fs);
-      
+
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readdirSync.mockReturnValue([
         { name: '.git', isFile: () => false, isDirectory: () => true },
@@ -192,7 +188,7 @@ describe('NodeTypes', () => {
 
     it('should respect maxDepth', () => {
       const mockFs = jest.mocked(fs);
-      
+
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readdirSync.mockReturnValue([
         { name: 'subdir', isFile: () => false, isDirectory: () => true },
@@ -206,7 +202,7 @@ describe('NodeTypes', () => {
 
     it('should return null on file system errors (line 138)', () => {
       const mockFs = jest.mocked(fs);
-      
+
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readdirSync.mockImplementation(() => {
         throw new Error('EACCES: permission denied');
@@ -220,7 +216,7 @@ describe('NodeTypes', () => {
 
     it('should return null when directory does not exist', () => {
       const mockFs = jest.mocked(fs);
-      
+
       mockFs.existsSync.mockReturnValue(false);
 
       // biome-ignore lint/suspicious/noExplicitAny: testing private method
@@ -231,7 +227,7 @@ describe('NodeTypes', () => {
 
     it('should check current directory before subdirectories', () => {
       const mockFs = jest.mocked(fs);
-      
+
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readdirSync.mockReturnValue([
         { name: 'Target.node.js', isFile: () => true, isDirectory: () => false },
@@ -257,7 +253,7 @@ describe('NodeTypes', () => {
       const result = (NodeTypes as any).resolvePackageRoot('nonexistent-pkg');
 
       expect(result).toBeNull();
-      
+
       require.resolve = originalResolve;
     });
   });
@@ -269,7 +265,7 @@ describe('NodeTypes', () => {
 
       // loadNodeType returns early if already loaded (doesn't throw)
       await nodeTypes.loadNodeType('test.node');
-      
+
       // Node should still be there
       expect(nodeTypes.getByName('test.node')).toBe(mockNode);
     });
@@ -277,7 +273,7 @@ describe('NodeTypes', () => {
     it('should throw error when package root cannot be resolved', async () => {
       const mockFs = jest.mocked(fs);
       const mockPath = jest.mocked(path);
-      
+
       mockPath.join.mockImplementation((...args) => args.join('/'));
       mockPath.dirname.mockImplementation((p) => p);
       mockFs.existsSync.mockReturnValue(false);
@@ -290,7 +286,7 @@ describe('NodeTypes', () => {
     it('should throw error when node file cannot be found', async () => {
       const mockFs = jest.mocked(fs);
       const mockPath = jest.mocked(path);
-      
+
       mockPath.join.mockImplementation((...args) => args.join('/'));
       mockPath.dirname.mockImplementation((p) => p);
       mockFs.existsSync.mockReturnValue(true);
@@ -300,6 +296,133 @@ describe('NodeTypes', () => {
       await expect(nodeTypes.loadNodeType('test-pkg.missing')).rejects.toThrow(
         'Failed to load node type',
       );
+    });
+
+    it('should load node type successfully from named export', async () => {
+      const mockPath = jest.mocked(path);
+      mockPath.join.mockImplementation((...args) => args.join('/'));
+
+      const resolvePackageRootSpy = jest
+        .spyOn(NodeTypes as any, 'resolvePackageRoot')
+        .mockReturnValue('/mock/pkg');
+      const findNodeFileSpy = jest
+        .spyOn(NodeTypes as any, 'findNodeFile')
+        .mockReturnValue('virtual/test-node-module.js');
+
+      class MockNamedNode {
+        description = { name: 'testNode' };
+      }
+
+      jest.doMock('virtual/test-node-module.js', () => ({ TestNode: MockNamedNode }), {
+        virtual: true,
+      });
+
+      try {
+        await nodeTypes.loadNodeType('test-pkg.testNode');
+        const loaded = nodeTypes.getByName('test-pkg.testNode');
+        expect(loaded).toBeInstanceOf(MockNamedNode);
+      } finally {
+        resolvePackageRootSpy.mockRestore();
+        findNodeFileSpy.mockRestore();
+        jest.dontMock('virtual/test-node-module.js');
+      }
+    });
+
+    it('should load node type successfully from default export', async () => {
+      const mockPath = jest.mocked(path);
+      mockPath.join.mockImplementation((...args) => args.join('/'));
+
+      const resolvePackageRootSpy = jest
+        .spyOn(NodeTypes as any, 'resolvePackageRoot')
+        .mockReturnValue('/mock/pkg');
+      const findNodeFileSpy = jest
+        .spyOn(NodeTypes as any, 'findNodeFile')
+        .mockReturnValue('virtual/default-node-module.js');
+
+      class MockDefaultNode {
+        description = { name: 'defaultNode' };
+      }
+
+      jest.doMock('virtual/default-node-module.js', () => ({ default: MockDefaultNode }), {
+        virtual: true,
+      });
+
+      try {
+        await nodeTypes.loadNodeType('test-pkg.defaultNode');
+        const loaded = nodeTypes.getByName('test-pkg.defaultNode');
+        expect(loaded).toBeInstanceOf(MockDefaultNode);
+      } finally {
+        resolvePackageRootSpy.mockRestore();
+        findNodeFileSpy.mockRestore();
+        jest.dontMock('virtual/default-node-module.js');
+      }
+    });
+
+    it('should throw when module does not expose expected class', async () => {
+      const mockPath = jest.mocked(path);
+      mockPath.join.mockImplementation((...args) => args.join('/'));
+
+      const resolvePackageRootSpy = jest
+        .spyOn(NodeTypes as any, 'resolvePackageRoot')
+        .mockReturnValue('/mock/pkg');
+      const findNodeFileSpy = jest
+        .spyOn(NodeTypes as any, 'findNodeFile')
+        .mockReturnValue('virtual/no-class-node-module.js');
+
+      jest.doMock(
+        'virtual/no-class-node-module.js',
+        () => ({ NotTheRightExport: class UnknownNode {} }),
+        { virtual: true },
+      );
+
+      try {
+        await expect(nodeTypes.loadNodeType('test-pkg.noClass')).rejects.toThrow(
+          'Could not find class NoClass in module',
+        );
+      } finally {
+        resolvePackageRootSpy.mockRestore();
+        findNodeFileSpy.mockRestore();
+        jest.dontMock('virtual/no-class-node-module.js');
+      }
+    });
+  });
+
+  describe('requireModule', () => {
+    it('should return module when direct require succeeds', () => {
+      const result = NodeTypes.requireModule('node:path') as Record<string, unknown>;
+      expect(result).toHaveProperty('join');
+    });
+
+    it('should fallback to require.resolve paths when direct require fails', () => {
+      const realFs = jest.requireActual('fs') as typeof import('fs');
+      const realPath = jest.requireActual('path') as typeof import('path');
+      const realOs = jest.requireActual('os') as typeof import('os');
+
+      const previousCwd = process.cwd();
+      const tmpDir = realFs.mkdtempSync(realPath.join(realOs.tmpdir(), 'node-types-'));
+      const moduleDir = realPath.join(tmpDir, 'node_modules', 'fallback-only-pkg');
+      realFs.mkdirSync(moduleDir, { recursive: true });
+      realFs.writeFileSync(
+        realPath.join(moduleDir, 'index.js'),
+        'module.exports = { loadedFrom: "fallback" };',
+      );
+
+      try {
+        process.chdir(tmpDir);
+        const result = NodeTypes.requireModule('fallback-only-pkg') as Record<string, unknown>;
+        expect(result).toEqual({ loadedFrom: 'fallback' });
+      } finally {
+        process.chdir(previousCwd);
+        realFs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('resolvePackageRoot', () => {
+    it('should return package directory when package can be resolved', () => {
+      // biome-ignore lint/suspicious/noExplicitAny: testing private static method
+      const result = (NodeTypes as any).resolvePackageRoot('jest');
+      expect(result).toBeTruthy();
     });
   });
 
