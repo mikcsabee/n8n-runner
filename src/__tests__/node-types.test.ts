@@ -269,6 +269,67 @@ describe('NodeTypes', () => {
     });
   });
 
+  describe('getNodeFilePath', () => {
+    beforeEach(() => {
+      const mockPath = jest.mocked(path);
+      mockPath.join.mockImplementation((...args) => args.join('/'));
+    });
+
+    it('should return node file path and cache package index', async () => {
+      const buildPackageIndexSpy = jest
+        .spyOn(nodeTypesStatic, 'buildPackageIndex')
+        .mockResolvedValue(new Map([['Set', '/mock/pkg/dist/nodes/Set.node.js']]));
+
+      try {
+        const first = await nodeTypesStatic.getNodeFilePath('/mock/pkg', 'Set');
+        const second = await nodeTypesStatic.getNodeFilePath('/mock/pkg', 'Set');
+
+        expect(first).toBe('/mock/pkg/dist/nodes/Set.node.js');
+        expect(second).toBe('/mock/pkg/dist/nodes/Set.node.js');
+        expect(buildPackageIndexSpy).toHaveBeenCalledTimes(1);
+        expect(buildPackageIndexSpy).toHaveBeenCalledWith('/mock/pkg/dist/nodes');
+      } finally {
+        buildPackageIndexSpy.mockRestore();
+      }
+    });
+
+    it('should return null when class name is not in package index', async () => {
+      const buildPackageIndexSpy = jest
+        .spyOn(nodeTypesStatic, 'buildPackageIndex')
+        .mockResolvedValue(new Map());
+
+      try {
+        const result = await nodeTypesStatic.getNodeFilePath('/mock/pkg', 'MissingNode');
+
+        expect(result).toBeNull();
+      } finally {
+        buildPackageIndexSpy.mockRestore();
+      }
+    });
+
+    it('should keep a separate cache per package root', async () => {
+      const buildPackageIndexSpy = jest
+        .spyOn(nodeTypesStatic, 'buildPackageIndex')
+        .mockImplementation(async (baseDir: string) => {
+          if (baseDir === '/pkg-a/dist/nodes') {
+            return new Map([['NodeA', '/pkg-a/dist/nodes/NodeA.node.js']]);
+          }
+          return new Map([['NodeB', '/pkg-b/dist/nodes/NodeB.node.js']]);
+        });
+
+      try {
+        const packageAResult = await nodeTypesStatic.getNodeFilePath('/pkg-a', 'NodeA');
+        const packageBResult = await nodeTypesStatic.getNodeFilePath('/pkg-b', 'NodeB');
+
+        expect(packageAResult).toBe('/pkg-a/dist/nodes/NodeA.node.js');
+        expect(packageBResult).toBe('/pkg-b/dist/nodes/NodeB.node.js');
+        expect(buildPackageIndexSpy).toHaveBeenCalledTimes(2);
+      } finally {
+        buildPackageIndexSpy.mockRestore();
+      }
+    });
+  });
+
   describe('resolvePackageRoot', () => {
     it('should return null when package cannot be resolved', () => {
       const result = nodeTypesStatic.resolvePackageRoot('definitely-missing-pkg-xyz');
