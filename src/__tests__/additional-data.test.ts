@@ -142,9 +142,9 @@ describe('createAdditionalData', () => {
 
     expect(result.restApiUrl).toBe('');
     expect(result.instanceBaseUrl).toBe('');
-    expect(result.formWaitingBaseUrl).toBe('');
+    expect(result.formWaitingBaseUrl).toBe('http://localhost');
     expect(result.webhookBaseUrl).toBe('');
-    expect(result.webhookWaitingBaseUrl).toBe('');
+    expect(result.webhookWaitingBaseUrl).toBe('http://localhost');
     expect(result.webhookTestBaseUrl).toBe('');
   });
 

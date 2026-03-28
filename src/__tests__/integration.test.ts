@@ -106,6 +106,7 @@ describe('Integration', () => {
         manualData: undefined,
         parentExecution: undefined,
         pushRef: undefined,
+        resumeToken: expect.any(String),
         resultData: {
           error: undefined,
           lastNodeExecuted: 'Test',
@@ -141,7 +142,6 @@ describe('Integration', () => {
           },
         },
         startData: expect.anything(),
-        validateSignature: undefined,
         version: 1,
         waitTill: undefined,
       },
