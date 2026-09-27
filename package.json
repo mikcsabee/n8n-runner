@@ -47,7 +47,7 @@
     "n8n-workflow": "2.38.1"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.2",
+    "@biomejs/biome": "2.5.14",
     "@types/jest": "30.0.0",
     "@types/node": "25.9.3",
     "jest": "30.5.2",
