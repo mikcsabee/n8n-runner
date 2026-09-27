@@ -20,7 +20,7 @@ jest.mock('@n8n/di', () => {
 
 jest.mock('n8n-core', () => ({
   Credentials: jest.fn(function (this: Record<string, unknown>) {
-    this.getData = jest.fn().mockReturnValue({});
+    this.getData = jest.fn().mockResolvedValue({});
   }),
 }));
 
@@ -150,6 +150,78 @@ describe('CredentialsHelper', () => {
     it('should return undefined', async () => {
       const result = await credentialsHelper.preAuthentication();
       expect(result).toBeUndefined();
+    });
+  });
+
+  describe('runPreAuthentication', () => {
+    it('should return undefined', async () => {
+      const result = await credentialsHelper.runPreAuthentication();
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe('isCredentialUsableByNode', () => {
+    it('should allow usage when the credential type is unknown', () => {
+      mockCredentialTypes.getByName.mockImplementation(() => {
+        throw new Error('Unknown credential type');
+      });
+
+      expect(credentialsHelper.isCredentialUsableByNode('unknownApi', 'n8n-nodes-base.set')).toBe(
+        true,
+      );
+    });
+
+    it('should allow usage when the credential type is not restricted', () => {
+      mockCredentialTypes.getByName.mockReturnValue({
+        name: 'openAiApi',
+        displayName: 'OpenAI',
+        properties: [],
+      } as ICredentialType);
+
+      expect(credentialsHelper.isCredentialUsableByNode('openAiApi', 'n8n-nodes-base.set')).toBe(
+        true,
+      );
+    });
+
+    it('should allow usage when the node is in supportedNodes', () => {
+      mockCredentialTypes.getByName.mockReturnValue({
+        name: 'restrictedApi',
+        displayName: 'Restricted',
+        properties: [],
+        restrictToSupportedNodes: true,
+        supportedNodes: ['n8n-nodes-base.httpRequest'],
+      } as ICredentialType);
+
+      expect(
+        credentialsHelper.isCredentialUsableByNode('restrictedApi', 'n8n-nodes-base.httpRequest'),
+      ).toBe(true);
+    });
+
+    it('should deny usage when the node is not in supportedNodes', () => {
+      mockCredentialTypes.getByName.mockReturnValue({
+        name: 'restrictedApi',
+        displayName: 'Restricted',
+        properties: [],
+        restrictToSupportedNodes: true,
+        supportedNodes: ['n8n-nodes-base.httpRequest'],
+      } as ICredentialType);
+
+      expect(
+        credentialsHelper.isCredentialUsableByNode('restrictedApi', 'n8n-nodes-base.set'),
+      ).toBe(false);
+    });
+
+    it('should deny usage when restricted and supportedNodes is missing', () => {
+      mockCredentialTypes.getByName.mockReturnValue({
+        name: 'restrictedApi',
+        displayName: 'Restricted',
+        properties: [],
+        restrictToSupportedNodes: true,
+      } as ICredentialType);
+
+      expect(
+        credentialsHelper.isCredentialUsableByNode('restrictedApi', 'n8n-nodes-base.set'),
+      ).toBe(false);
     });
   });
 
@@ -334,7 +406,7 @@ describe('CredentialsHelper', () => {
 
       // Mock the Credentials class to return data with oauthTokenData
       (Credentials as jest.Mock).mockImplementation(() => ({
-        getData: jest.fn().mockReturnValue({
+        getData: jest.fn().mockResolvedValue({
           clientId: 'id',
           clientSecret: 'secret',
           oauthTokenData: { accessToken: 'token123' },
@@ -468,7 +540,7 @@ describe('CredentialsHelper', () => {
 
       // Mock Credentials to return data with oauthTokenData
       const mockCredentials = {
-        getData: jest.fn().mockReturnValue({
+        getData: jest.fn().mockResolvedValue({
           clientId: 'test-id',
           oauthTokenData: { accessToken: 'token123', refreshToken: 'refresh' },
         }),

@@ -4,6 +4,7 @@ import { Credentials } from 'n8n-core';
 import type {
   ICredentialDataDecryptedObject,
   ICredentialsExpressionResolveValues,
+  ICredentialType,
   IExecuteData,
   IHttpRequestOptions,
   INode,
@@ -83,6 +84,32 @@ export class CredentialsHelper extends ICredentialsHelper {
    */
   getParentTypes(typeName: string): string[] {
     return this.credentialTypes.getParentTypes(typeName);
+  }
+
+  /**
+   * Checks whether the given credential type may be used by the given node type
+   */
+  isCredentialUsableByNode(credentialType: string, nodeType: string): boolean {
+    let credentialTypeData: ICredentialType;
+    try {
+      credentialTypeData = this.credentialTypes.getByName(credentialType);
+    } catch {
+      return true;
+    }
+
+    if (credentialTypeData.restrictToSupportedNodes !== true) {
+      return true;
+    }
+
+    return (credentialTypeData.supportedNodes ?? []).includes(nodeType);
+  }
+
+  /**
+   * Runs the pre-authentication step outside of the authentication flow
+   */
+  async runPreAuthentication(): Promise<ICredentialDataDecryptedObject | undefined> {
+    // Stub implementation - pre-auth is not supported in runner mode
+    return undefined;
   }
 
   /**
@@ -173,7 +200,7 @@ export class CredentialsHelper extends ICredentialsHelper {
     _expressionResolveValues?: ICredentialsExpressionResolveValues,
   ): Promise<ICredentialDataDecryptedObject> {
     const credentials = await this.getCredentials(nodeCredentials, type);
-    const decryptedDataOriginal = credentials.getData();
+    const decryptedDataOriginal = await credentials.getData();
 
     if (raw === true) {
       return decryptedDataOriginal;
