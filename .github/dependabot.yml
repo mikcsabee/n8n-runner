@@ -9,6 +9,23 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+    # n8n-core pins exact versions of n8n-workflow, @n8n/backend-common and
+    # @n8n/di. Bumping one of them alone installs a second copy of the others,
+    # which breaks the build (duplicate n8n-workflow types) or the DI container
+    # at runtime (duplicate @n8n/di), so they have to move in one pull request.
+    groups:
+      n8n:
+        applies-to: version-updates
+        patterns:
+          - "n8n-core"
+          - "n8n-workflow"
+          - "@n8n/*"
+      n8n-security:
+        applies-to: security-updates
+        patterns:
+          - "n8n-core"
+          - "n8n-workflow"
+          - "@n8n/*"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
