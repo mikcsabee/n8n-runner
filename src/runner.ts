@@ -1,6 +1,6 @@
 import { Logger } from '@n8n/backend-common';
 import { Container } from '@n8n/di';
-import { WorkflowExecute } from 'n8n-core';
+import { EncryptionKeyProxy, WorkflowExecute } from 'n8n-core';
 import type { WorkflowParameters } from 'n8n-workflow';
 import { Workflow } from 'n8n-workflow';
 import { createAdditionalData } from './additional-data';
@@ -8,6 +8,7 @@ import { CredentialTypes } from './credential-types';
 import { CredentialsHelper } from './credentials-helper';
 import { CredentialsOverwrites } from './credentials-overwrites';
 import type { ICredentialsProvider } from './credentials-provider';
+import { InstanceKeyProvider } from './encryption-key-provider';
 import { type NodeConstructor, NodeTypes } from './node-types';
 
 export interface ExecutionResult {
@@ -43,6 +44,10 @@ export class Runner {
         credentialsProvider,
       ),
     );
+
+    // n8n-core resolves credential encryption keys through this proxy and
+    // throws on decrypt if no provider is registered
+    Container.get(EncryptionKeyProxy).setProvider(new InstanceKeyProvider());
 
     this.initialized = true;
     this.logger.debug('Runner initialized');

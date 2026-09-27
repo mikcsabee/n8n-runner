@@ -4,10 +4,13 @@ jest.mock('@n8n/backend-common', () => ({
   Logger: jest.fn(),
 }));
 
+const mockSetProvider = jest.fn();
+
 jest.mock('@n8n/di', () => {
   const mockLogger = {
     debug: jest.fn(),
     error: jest.fn(),
+    setProvider: mockSetProvider,
   };
   return {
     Container: {
@@ -20,9 +23,14 @@ jest.mock('@n8n/di', () => {
 });
 
 jest.mock('n8n-core', () => ({
+  EncryptionKeyProxy: class {},
   WorkflowExecute: jest.fn(function () {
     this.run = jest.fn().mockResolvedValue({ status: 'success' });
   }),
+}));
+
+jest.mock('../encryption-key-provider', () => ({
+  InstanceKeyProvider: jest.fn(),
 }));
 
 jest.mock('n8n-workflow', () => ({
@@ -51,8 +59,10 @@ jest.mock('../node-types', () => ({
 }));
 
 import { Container } from '@n8n/di';
+import { EncryptionKeyProxy } from 'n8n-core';
 import type { WorkflowParameters } from 'n8n-workflow';
 import type { ICredentialsProvider } from '../credentials-provider';
+import { InstanceKeyProvider } from '../encryption-key-provider';
 import type { NodeTypes } from '../node-types';
 import { Runner } from '../runner';
 
@@ -72,6 +82,18 @@ describe('Runner', () => {
 
       expect(Container.get).toHaveBeenCalled();
       expect(Container.set).toHaveBeenCalled();
+    });
+
+    it('should register the instance key provider on the encryption key proxy', async () => {
+      const mockProvider: ICredentialsProvider = { getCredentialData: jest.fn() };
+
+      await runner.init(mockProvider);
+
+      expect(Container.get).toHaveBeenCalledWith(EncryptionKeyProxy);
+      expect(InstanceKeyProvider).toHaveBeenCalledTimes(1);
+      expect(mockSetProvider).toHaveBeenCalledWith(
+        (InstanceKeyProvider as jest.Mock).mock.instances[0],
+      );
     });
 
     it('should not reinitialize if already initialized', async () => {
