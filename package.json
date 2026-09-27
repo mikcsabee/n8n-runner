@@ -44,7 +44,7 @@
     "@n8n/backend-common": "1.38.1",
     "@n8n/di": "0.16.0",
     "n8n-core": "2.38.1",
-    "n8n-workflow": "2.38.1"
+    "n8n-workflow": "2.41.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.2",
