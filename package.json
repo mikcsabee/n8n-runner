@@ -41,10 +41,10 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@n8n/backend-common": "1.40.1",
+    "@n8n/backend-common": "1.41.2",
     "@n8n/di": "0.17.0",
-    "n8n-core": "2.40.3",
-    "n8n-workflow": "2.40.1"
+    "n8n-core": "2.41.2",
+    "n8n-workflow": "2.41.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.14",
