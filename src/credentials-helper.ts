@@ -12,10 +12,17 @@ import type {
   INodeParameters,
   INodeProperties,
   INodeTypes,
+  IWorkflowDataProxyAdditionalKeys,
   IWorkflowExecuteAdditionalData,
   WorkflowExecuteMode,
 } from 'n8n-workflow';
-import { ICredentialsHelper, NodeHelpers, UnexpectedError, Workflow } from 'n8n-workflow';
+import {
+  ICredentialsHelper,
+  isExpression,
+  NodeHelpers,
+  UnexpectedError,
+  Workflow,
+} from 'n8n-workflow';
 
 import type { CredentialTypes } from './credential-types';
 import type { CredentialsOverwrites } from './credentials-overwrites';
@@ -49,12 +56,91 @@ export class CredentialsHelper extends ICredentialsHelper {
    * Add the required authentication information to the request
    */
   async authenticate(
-    _credentials: ICredentialDataDecryptedObject,
-    _typeName: string,
+    credentials: ICredentialDataDecryptedObject,
+    typeName: string,
     requestOptions: IHttpRequestOptions,
+    workflow?: Workflow,
+    node?: INode,
   ): Promise<IHttpRequestOptions> {
-    // Stub implementation - authentication is not supported in runner mode
+    const credentialType = this.credentialTypes.getByName(typeName);
+
+    if (!credentialType.authenticate) {
+      // No authentication data defined, return request options unchanged
+      return requestOptions;
+    }
+
+    if (typeof credentialType.authenticate === 'function') {
+      // The credential type brings its own authenticate function
+      return credentialType.authenticate(credentials, requestOptions);
+    }
+
+    if (!workflow || !node) {
+      throw new UnexpectedError(
+        `Cannot resolve generic authentication for credential type "${typeName}" without workflow and node`,
+        { tags: { credentialType: typeName } },
+      );
+    }
+
+    const { authenticate } = credentialType;
+
+    if (requestOptions.headers === undefined) {
+      requestOptions.headers = {};
+    }
+
+    if (authenticate.type !== 'generic') {
+      // Unknown authentication type, return request options unchanged
+      return requestOptions;
+    }
+
+    const additionalKeys: IWorkflowDataProxyAdditionalKeys = {
+      $credentials: credentials,
+    };
+
+    for (const [outerKey, outerValue] of Object.entries(authenticate.properties)) {
+      for (const [key, value] of Object.entries(outerValue as Record<string, string>)) {
+        const keyResolved = this.resolveAuthenticationValue(key, additionalKeys, workflow, node);
+        const valueResolved = this.resolveAuthenticationValue(
+          value,
+          additionalKeys,
+          workflow,
+          node,
+        );
+
+        // Dynamic key on request options (qs / headers / body / auth) - outerKey
+        // is only known at runtime, so there is no way to type this statically
+        const dynamicOptions = requestOptions as unknown as Record<string, Record<string, unknown>>;
+        dynamicOptions[outerKey] ??= {};
+        dynamicOptions[outerKey][keyResolved] = valueResolved;
+      }
+    }
+
     return requestOptions;
+  }
+
+  /**
+   * Resolves a generic-authentication property value, evaluating any
+   * `={{ $credentials.xxx }}` expression against the decrypted credential data
+   */
+  private resolveAuthenticationValue(
+    parameterValue: string,
+    additionalKeys: IWorkflowDataProxyAdditionalKeys,
+    workflow: Workflow,
+    node: INode,
+  ): string {
+    if (!isExpression(parameterValue)) {
+      return parameterValue;
+    }
+
+    const returnValue = workflow.expression.getSimpleParameterValue(
+      node,
+      parameterValue,
+      'internal',
+      additionalKeys,
+      undefined,
+      '',
+    );
+
+    return returnValue === undefined || returnValue === null ? '' : returnValue.toString();
   }
 
   /**

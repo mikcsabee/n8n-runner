@@ -35,11 +35,13 @@ jest.mock('n8n-workflow', () => {
   class WorkflowMock {
     expression = {
       getComplexParameterValue: jest.fn((_node: unknown, data: unknown) => data),
+      getSimpleParameterValue: jest.fn((_node: unknown, value: unknown) => value),
     };
   }
 
   return {
     ICredentialsHelper: ICredentialsHelperMock,
+    isExpression: (value: unknown) => typeof value === 'string' && value.trim().startsWith('='),
     NodeHelpers: {
       mergeNodeProperties: jest.fn(),
       getNodeParameters: jest.fn((_props: unknown, data: unknown) => data),
@@ -56,8 +58,10 @@ jest.mock('../credentials-provider');
 import { Container } from '@n8n/di';
 import { Credentials } from 'n8n-core';
 import type {
+  ICredentialDataDecryptedObject,
   ICredentialType,
   IHttpRequestOptions,
+  INode,
   INodeCredentialsDetails,
   IWorkflowExecuteAdditionalData,
 } from 'n8n-workflow';
@@ -123,7 +127,19 @@ describe('CredentialsHelper', () => {
   });
 
   describe('authenticate', () => {
-    it('should return request options unchanged', async () => {
+    const createWorkflowMock = (credentials: ICredentialDataDecryptedObject) =>
+      ({
+        expression: {
+          getSimpleParameterValue: jest.fn((_node: unknown, value: string) => {
+            const match = /\$credentials\.(\w+)/.exec(value);
+            return match ? (credentials as Record<string, string>)[match[1]] : value;
+          }),
+        },
+      }) as unknown as Workflow;
+
+    const mockNode = { name: 'testNode' } as INode;
+
+    it('should return request options unchanged when the type has no authenticate data', async () => {
       const credentials = { username: 'test' };
       const requestOptions = { headers: { Authorization: 'Bearer token' } };
 
@@ -143,6 +159,143 @@ describe('CredentialsHelper', () => {
         {} as unknown as IHttpRequestOptions,
       );
       expect(result).toEqual({});
+    });
+
+    it('should call the credential type authenticate function when defined as a function', async () => {
+      const credentials = { apiKey: 'secret' };
+      const requestOptions = { url: 'https://example.com' } as unknown as IHttpRequestOptions;
+      const authenticateFn = jest.fn().mockResolvedValue(requestOptions);
+      mockCredentialTypes.getByName.mockReturnValue({
+        name: 'testType',
+        properties: [],
+        authenticate: authenticateFn,
+      } as unknown as ICredentialType);
+
+      const result = await credentialsHelper.authenticate(
+        credentials,
+        'testType',
+        requestOptions,
+        createWorkflowMock(credentials),
+        mockNode,
+      );
+
+      expect(authenticateFn).toHaveBeenCalledWith(credentials, requestOptions);
+      expect(result).toBe(requestOptions);
+    });
+
+    it('should resolve and merge generic qs properties into request options', async () => {
+      const credentials = { apiKey: 'my-api-key' };
+      mockCredentialTypes.getByName.mockReturnValue({
+        name: 'googlePalmApi',
+        properties: [],
+        authenticate: {
+          type: 'generic',
+          properties: { qs: { key: '={{ $credentials.apiKey }}' } },
+        },
+      } as unknown as ICredentialType);
+
+      const requestOptions = { url: 'https://example.com', headers: {} } as IHttpRequestOptions;
+      const result = await credentialsHelper.authenticate(
+        credentials,
+        'googlePalmApi',
+        requestOptions,
+        createWorkflowMock(credentials),
+        mockNode,
+      );
+
+      expect(result.qs).toEqual({ key: 'my-api-key' });
+      expect(result.headers).toEqual({});
+    });
+
+    it('should resolve and merge generic header properties, initializing headers when missing', async () => {
+      const credentials = { token: 'bearer-token' };
+      mockCredentialTypes.getByName.mockReturnValue({
+        name: 'headerAuth',
+        properties: [],
+        authenticate: {
+          type: 'generic',
+          properties: { headers: { Authorization: '={{ $credentials.token }}' } },
+        },
+      } as unknown as ICredentialType);
+
+      const requestOptions = { url: 'https://example.com' } as IHttpRequestOptions;
+      const workflow = {
+        expression: {
+          getSimpleParameterValue: jest.fn(() => 'bearer-token'),
+        },
+      } as unknown as Workflow;
+
+      const result = await credentialsHelper.authenticate(
+        credentials,
+        'headerAuth',
+        requestOptions,
+        workflow,
+        mockNode,
+      );
+
+      expect(result.headers).toEqual({ Authorization: 'bearer-token' });
+      expect(workflow.expression.getSimpleParameterValue).toHaveBeenCalled();
+    });
+
+    it('should keep plain (non-expression) values as-is', async () => {
+      mockCredentialTypes.getByName.mockReturnValue({
+        name: 'staticAuth',
+        properties: [],
+        authenticate: {
+          type: 'generic',
+          properties: { headers: { 'X-Static': 'static-value' } },
+        },
+      } as unknown as ICredentialType);
+
+      const requestOptions = { url: 'https://example.com' } as IHttpRequestOptions;
+      const result = await credentialsHelper.authenticate(
+        {},
+        'staticAuth',
+        requestOptions,
+        createWorkflowMock({}),
+        mockNode,
+      );
+
+      expect(result.headers).toEqual({ 'X-Static': 'static-value' });
+    });
+
+    it('should throw when generic authentication needs workflow and node but they are missing', async () => {
+      mockCredentialTypes.getByName.mockReturnValue({
+        name: 'genericAuth',
+        properties: [],
+        authenticate: {
+          type: 'generic',
+          properties: { qs: { key: '={{ $credentials.apiKey }}' } },
+        },
+      } as unknown as ICredentialType);
+
+      await expect(
+        credentialsHelper.authenticate({}, 'genericAuth', {} as IHttpRequestOptions),
+      ).rejects.toThrow(
+        'Cannot resolve generic authentication for credential type "genericAuth" without workflow and node',
+      );
+    });
+
+    it('should return request options unchanged for an unknown authentication descriptor type', async () => {
+      mockCredentialTypes.getByName.mockReturnValue({
+        name: 'weirdAuth',
+        properties: [],
+        authenticate: {
+          type: 'unknown-type',
+          properties: {},
+        },
+      } as unknown as ICredentialType);
+
+      const requestOptions = { url: 'https://example.com' } as IHttpRequestOptions;
+      const result = await credentialsHelper.authenticate(
+        {},
+        'weirdAuth',
+        requestOptions,
+        createWorkflowMock({}),
+        mockNode,
+      );
+
+      expect(result).toBe(requestOptions);
     });
   });
 
