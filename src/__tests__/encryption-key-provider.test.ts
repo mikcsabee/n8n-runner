@@ -88,8 +88,8 @@ describe('InstanceKeyProvider', () => {
     const cipher = Container.get(Cipher);
     const data = { apiKey: 'secret', endpoint: 'https://example.com' };
 
-    // Cipher.encrypt is the pre-2.40 code path: plain aes-256-cbc under the instance key
-    const legacyBlob = cipher.encrypt(data);
+    // encryptWithInstanceKey is the pre-2.40 code path: plain aes-256-cbc under the instance key
+    const legacyBlob = cipher.encryptWithInstanceKey(data);
 
     await expect(cipher.decryptV2(legacyBlob)).resolves.toBe(JSON.stringify(data));
 
@@ -104,12 +104,12 @@ describe('InstanceKeyProvider', () => {
     const blob = await cipher.encryptV2({ token: 'abc' });
 
     expect(blob).not.toContain(':');
-    expect(cipher.decrypt(blob)).toBe(JSON.stringify({ token: 'abc' }));
+    expect(cipher.decryptWithInstanceKey(blob)).toBe(JSON.stringify({ token: 'abc' }));
   });
 
   it('should be required: without a provider n8n-core cannot decrypt credentials', async () => {
     const cipher = Container.get(Cipher);
-    const legacyBlob = cipher.encrypt({ apiKey: 'secret' });
+    const legacyBlob = cipher.encryptWithInstanceKey({ apiKey: 'secret' });
 
     await expect(cipher.decryptV2(legacyBlob)).rejects.toThrow(
       'Encryption key provider is not configured',
